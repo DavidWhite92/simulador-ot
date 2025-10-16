@@ -186,7 +186,7 @@ export default function SimuladorOT(){
     else { writeAt(logIdx,`⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → cruza la pasarela (salvado/a).`); const salvados=new Set(gstate.salvados); salvados.add(id); setGstate({...gstate,currentEvaluadoId:undefined,currentEvaluadoLogIndex:undefined,salvados,evalResults:[...gstate.evalResults,{id,result:"salvado"}],finalTwoPlan:plan?plan.slice(1):undefined,evaluacionOrden:gstate.evaluacionOrden.filter(x=>x!==id)}); }
   }
   function profesoresSalvanUno(){ if(!gstate || gstate.nominados.length!==4) return; const salvado=pickRandom(gstate.nominados,1)[0]; pushLog(`🎓 Profesores salvan a <strong>${nameOf(salvado)}</strong>.`); const nominados=gstate.nominados.filter(id=>id!==salvado); const salvados=new Set(gstate.salvados); salvados.add(salvado); setGstate({...gstate, profesorSalvoId:salvado, nominados, salvados}); setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), profesorSalvoId:salvado }})); setStage("companerosVotan"); }
-  function companerosVotan(){ if(!gstate) return; const electores=Array.from(gstate.salvados), candidatos=gstate.nominados, votos=[]; electores.forEach(v=>{ votos.push({voterId:v,votedId:pickRandom(candidatos,1)[0]}); }); const recuento=Object.fromEntries(candidatos.map(c=>[c,0])); votos.forEach(v=>recuento[v.votedId]++); let max=Math.max(...Object.values(recuento)); let empatados=Object.entries(recuento).filter(([,n])=>n===max).map(([id])=>id); if(empatados.length>1 && gstate.favoritoId){ const votoFav=votos.find(x=>x.voterId===gstate.favoritoId)?.votedId; if(votoFav && empatados.includes(votoFav)) recuento[votoFav]++; max=Math.max(...Object.values(recuento)); empatados=Object.entries(recuento).filter(([,n])=>n===max).map(([id])=>id); } const ganador=pickRandom(empatados,1)[0]; const votosList = votos.map(v=>`<li>${nameOf(v.voterId)} → ${nameOf(v.votedId)}</li>`).join(""); pushLog(`🧑‍🤝‍🧑 Votación de compañeros:<ul style=\"margin:4px 0 0 16px;\">${votosList}</ul>${gstate.favoritoId?"<div class=\\\"text-xs\\\">* El voto del favorito puede valer doble en empate</div>":""}`); pushLog(`✅ Más votado por compañeros: <strong>${nameOf(ganador)}</strong> (se salva).`); const nominadosRestantes=candidatos.filter(id=>id!==ganador); const salvados=new Set(gstate.salvados); salvados.add(ganador); setGstate({...gstate, votosCompaneros:votos, salvadoCompanerosId:ganador, nominados:nominadosRestantes, salvados}); setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), salvadoCompanerosId:ganador, finalNominees:nominadosRestantes }})); pushLog(`🟥 Nominados para la próxima gala: <strong>${nameOf(nominadosRestantes[0])}</strong> vs <strong>${nameOf(nominadosRestantes[1])}</strong>.`); setCarryNominees(nominadosRestantes); setStage("galaCerrada"); }
+  function companerosVotan(){ if(!gstate) return; const electores=Array.from(gstate.salvados), candidatos=gstate.nominados, votos=[]; electores.forEach(v=>{ votos.push({voterId:v,votedId:pickRandom(candidatos,1)[0]}); }); const recuento=Object.fromEntries(candidatos.map(c=>[c,0])); votos.forEach(v=>recuento[v.votedId]++); let max=Math.max(...Object.values(recuento)); let empatados=Object.entries(recuento).filter(([,n])=>n===max).map(([id])=>id); if(empatados.length>1 && gstate.favoritoId){ const votoFav=votos.find(x=>x.voterId===gstate.favoritoId)?.votedId; if(votoFav && empatados.includes(votoFav)) recuento[votoFav]++; max=Math.max(...Object.values(recuento)); empatados=Object.entries(recuento).filter(([,n])=>n===max).map(([id])=>id); } const ganador=pickRandom(empatados,1)[0]; const votosList = votos.map(v=>`<li>${nameOf(v.voterId)} → ${nameOf(v.votedId)}</li>`).join(""); pushLog(`🧑‍🤝‍🧑 Votación de compañeros:<ul style=\"margin:4px 0 0 16px;\">${votosList}</ul>${gstate.favoritoId?"<div class=\\\"text-xs\\\">* El voto del favorito vale doble en caso de empate</div>":""}`); pushLog(`✅ Más votado por compañeros: <strong>${nameOf(ganador)}</strong> (se salva).`); const nominadosRestantes=candidatos.filter(id=>id!==ganador); const salvados=new Set(gstate.salvados); salvados.add(ganador); setGstate({...gstate, votosCompaneros:votos, salvadoCompanerosId:ganador, nominados:nominadosRestantes, salvados}); setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), salvadoCompanerosId:ganador, finalNominees:nominadosRestantes }})); pushLog(`🟥 Nominados para la próxima gala: <strong>${nameOf(nominadosRestantes[0])}</strong> vs <strong>${nameOf(nominadosRestantes[1])}</strong>.`); setCarryNominees(nominadosRestantes); setStage("galaCerrada"); }
 
   // Gala 10
   function gala10PuntuarJueces(){
@@ -489,15 +489,31 @@ export default function SimuladorOT(){
 
 function RecorridoTable({ contestants, summaries }){
 
-  // Usa el 'suf' que añadiste arriba en el archivo. Si no lo tienes aquí, añade:
-  const sufLocal = g => (g==="m"?"o":g==="f"?"a":"e");
+  // --- Helpers de género (compactos y sin repeticiones) ---
+  const sufLocal = g => (g==="m"?"o":g==="f"?"a":"e");               // sufijo por género
+  const byGender = (g, forms) => (g==="f" ? forms.f : g==="e" ? forms.e : forms.m);
 
-  // Obtener género de un id de concursante
+  // Ordinales según género: m → 2º / 3er ; f/e → 2ª / 3ª
+  const ord2 = (g) => (g === "m" ? "2º"  : "2ª");
+  const ord3 = (g) => (g === "m" ? "3er" : "3ª");
+
+  // Generador para etiquetas "regulares" (solo cambian sufijo final)
+  const makeLabel = (base) => (g) => base + sufLocal(g);
+
+  // Etiquetas resultantes
+  const lbl = {
+    // regulares (añaden sufijo o/a/e)
+    salvado:   makeLabel("Salvad"),    // Salvado/Salvada/Salvade
+    nominado:  makeLabel("Nominad"),   // Nominado/Nominada/Nominade
+    eliminado: makeLabel("Eliminad"),  // Eliminado/Eliminada/Eliminade
+
+    // irregulares (formas completas específicas)
+    favorito:  (g) => byGender(g, { m:"Favorito",  f:"Favorita",  e:"Favorite"  }),
+    ganador:   (g) => byGender(g, { m:"Ganador",   f:"Ganadora",  e:"Ganadore"  }),
+  };
+
+  // Acceso al género de un concursante por id
   const getGender = (id) => contestants.find(c => c.id === id)?.gender ?? "e";
-
-  // Palabras flexionadas
-  const palabraSalvado  = (g) => "Salvad"  + (typeof suf === "function" ? suf(g) : sufLocal(g));
-  const palabraNominado = (g) => "Nominad" + (typeof suf === "function" ? suf(g) : sufLocal(g));
 
   const headers=["Concursante", ...Array.from({length:15},(_,i)=> (i+1===15?"Gala Final":`Gala ${i+1}`))];
   const cellStyle=(bg,color="#000")=>({ background:bg, color, padding:"4px 6px", border:"1px solid #ddd", fontSize:12, textAlign:"center", whiteSpace:"nowrap" });
@@ -522,53 +538,138 @@ function RecorridoTable({ contestants, summaries }){
     for(let g=1; g<=15; g++){
       let text="—", style=cellStyle("#eee","#555");
       if(elimGala && g>elimGala){ cells.push({text:"—", style:cellStyle("#ccc","#666")}); continue; }
-      if(elimGala && g===elimGala){ cells.push({text:"Eliminado", style:cellStyle("red","#fff")}); continue; }
+      if (elimGala && g === elimGala) {const gnd = getGender(c.id); cells.push({ text: lbl.eliminado(gnd), style: cellStyle("red", "#fff") }); continue;}
       const s=summaries[g]; if(!s){ cells.push({text,style}); continue; }
 
       if (g <= 9) {
-      const inTop3 = (s.top3 || []).includes(c.id);
-      const favorito = s.favoritoId;
-      const juradoNom = s.juradoNominados || [];
-      const prof = s.profesorSalvoId;
-      const comp = s.salvadoCompanerosId;
-      const finales = s.finalNominees || [];
+        const inTop3    = (s.top3 || []).includes(c.id);
+        const favorito  = s.favoritoId;
+        const juradoNom = s.juradoNominados || [];
+        const prof      = s.profesorSalvoId;
+        const comp      = s.salvadoCompanerosId;
+        const finales   = s.finalNominees || [];
 
-      // 👇 Helpers de género
-      const gnd = getGender(c.id);                // "m" | "f" | "e"
-      const nom = palabraNominado(gnd);           // Nominado/Nominada/Nominade
-      const salv = palabraSalvado(gnd);           // Salvado/Salvada/Salvade
+        // 👇 obtener género del concursante
+        const gnd = getGender(c.id);
 
-      const by =
-        finales.includes(c.id) ? "finaltwo" :
-        comp === c.id           ? "compas"    :
-        prof === c.id           ? "profes"    :
-        (juradoNom.includes(c.id) ? "jurado"  : null);
+        // determinar quién lo nominó o salvó
+        const by =
+          finales.includes(c.id) ? "finaltwo" :
+          comp === c.id           ? "compas"    :
+          prof === c.id           ? "profes"    :
+          (juradoNom.includes(c.id) ? "jurado"  : null);
 
-      if (by) {
-        const color = { jurado:"orange", profes:"yellowgreen", compas:"khaki", finaltwo:"orange" }[by] || "orange";
-        text = inTop3 ? (nom + "º") : nom;       // Nominadoº / Nominadaº / Nominadeº si estuvo en Top3
-        style = cellStyle(color, "#111");
-      }
-      else if (favorito === c.id) {
-        text = "Favorito";                        // (No pidiste flexionar "Favorito")
-        style = cellStyle("DodgerBlue", "#fff");
-      }
-      else if (inTop3) {
-        text = salv;                              // Salvado/Salvada/Salvade
-        style = cellStyle("#AFEEEE", "#111");
-      }
-      else {
-        text = salv;                              // Salvado/Salvada/Salvade
-        style = cellStyle("#fff", "#111");
-      }
+        if (by) {
+          const color = {
+            jurado: "orange",
+            profes: "yellowgreen",
+            compas: "khaki",
+            finaltwo: "orange",
+          }[by] || "orange";
+
+          // 👉 Nominado/Nominada/Nominade (con º si estuvo en top3)
+          text  = inTop3 ? lbl.nominado(gnd) + "º" : lbl.nominado(gnd);
+          style = cellStyle(color, "#111");
+        }
+        else if (favorito === c.id) {
+          // 👉 Favorito/Favorita/Favorite
+          text  = lbl.favorito(gnd);
+          style = cellStyle("DodgerBlue", "#fff");
+        }
+        else if (inTop3) {
+          // 👉 Salvado/Salvada/Salvade (Top 3)
+          text  = lbl.salvado(gnd);
+          style = cellStyle("#AFEEEE", "#111");
+        }
+        else {
+          // 👉 Salvado/Salvada/Salvade (normal)
+          text  = lbl.salvado(gnd);
+          style = cellStyle("#fff", "#111");
+        }
       }
 
-      else if (g===10) {
-        const g10=s.g10; if(g10?.sumas){ const sum=g10.sumas[c.id]; if(typeof sum==="number"){ const nota=`Nota: ${(sum/4).toFixed(2)}`; const topId=Object.entries(g10.sumas).sort((a,b)=>b[1]-a[1])[0][0]; if(c.id===topId) { text=nota; style=cellStyle("DodgerBlue","#fff"); } else if((g10.top3||[]).includes(c.id)) { text=nota; style=cellStyle("#fff","#111"); } else if(g10.cuarto===c.id) { text=nota; style=cellStyle("yellowgreen","#111"); } else if(g10.quinto===c.id) { text=nota; style=cellStyle("khaki","#111"); } else if((g10.restantes||[]).includes(c.id) || (g10.nominados4||[]).includes(c.id)) { text=nota; style=cellStyle("orange","#111"); } else { text=nota; style=cellStyle("#fff","#111"); } } }
+
+      else if (g === 10) {
+        const g10 = s.g10;
+        if (g10?.sumas) {
+          const sum = g10.sumas[c.id];
+          if (typeof sum === "number") {
+            const nota = `Nota: ${(sum / 4).toFixed(2)}`;
+            const topId = Object.entries(g10.sumas).sort((a,b)=>b[1]-a[1])[0][0];
+
+            if (c.id === topId)                     { text = nota; style = cellStyle("DodgerBlue", "#fff"); }
+            else if ((g10.top3 || []).includes(c.id)) { text = nota; style = cellStyle("#fff", "#111"); }
+            else if (g10.cuarto === c.id)            { text = nota; style = cellStyle("yellowgreen", "#111"); }
+            else if (g10.quinto === c.id)            { text = nota; style = cellStyle("khaki", "#111"); }
+            else if ((g10.restantes || []).includes(c.id) || (g10.nominados4 || []).includes(c.id)) {
+              text = nota; style = cellStyle("orange", "#111");
+            } else {
+              text = nota; style = cellStyle("#fff", "#111");
+            }
+          }
+        }
       }
-      else if (g===11) { const g11=s.g11; if(g11){ if(g11.winner===c.id){ text="Finalista"; style=cellStyle("DodgerBlue","#fff"); } else if(g11.a===c.id || g11.b===c.id){ const win=c.id===g11.winner; text=win?"Finalista":"Eliminado"; style=win?cellStyle("DodgerBlue","#fff"):cellStyle("red","#fff"); } else { text="Finalista"; style=cellStyle("DodgerBlue","#fff"); } } }
-      else if(g>=12 && g<=14){ const gX=s.g12_14; if(gX){ const d=gX.duel; if(c.id===d.low && d.winner!==c.id){ text="Eliminado"; style=cellStyle("red","#fff"); } else if(c.id===d.low || c.id===d.high){ text="Duelo"; style=cellStyle("orange","#111"); } else { text="Salvado"; style=cellStyle("#fff","#111"); } } }
-      else if(g===15){ const gX=s.g15; if(gX){ if(gX.winner===c.id){ text="Ganador/a"; style=cellStyle("gold","#111"); } else if(gX.third===c.id){ text="3er Finalista"; style=cellStyle("#cd7f32","#fff"); } else { text="2º Finalista"; style=cellStyle("silver","#111"); } } }
+
+      else if (g === 11) {
+        const g11 = s.g11;
+        if (g11) {
+          const gnd = getGender(c.id);
+
+          if (g11.winner === c.id) {
+            text = "Finalista";                           // dejamos "Finalista" sin flexión
+            style = cellStyle("DodgerBlue", "#fff");
+          } else if (g11.a === c.id || g11.b === c.id) {
+            const win = c.id === g11.winner;
+            text  = win ? "Finalista" : lbl.eliminado(gnd); // Eliminado/Eliminada/Eliminade
+            style = win ? cellStyle("DodgerBlue", "#fff") : cellStyle("red", "#fff");
+          } else {
+            text = "Finalista";
+            style = cellStyle("DodgerBlue", "#fff");
+          }
+        }
+      }
+
+      else if (g >= 12 && g <= 14) {
+        const gX = s.g12_14;
+        if (gX) {
+          const d   = gX.duel;            // { low, high, pctWin, pctLose, winner }
+          const gnd = getGender(c.id);    // "m" | "f" | "e"
+
+          if (c.id === d.low && d.winner !== c.id) {
+            text  = lbl.eliminado(gnd);   // Eliminado/Eliminada/Eliminade
+            style = cellStyle("red", "#fff");
+          } else if (c.id === d.low || c.id === d.high) {
+            text  = "Duelo";
+            style = cellStyle("orange", "#111");
+          } else {
+            text  = lbl.salvado(gnd);     // Salvado/Salvada/Salvade
+            style = cellStyle("#fff", "#111");
+          }
+        }
+      }
+
+      else if (g === 15) {
+        const gX = s.g15;
+        if (gX) {
+          const gnd = getGender(c.id);
+
+          if (gX.winner === c.id) {
+            // Ganador/Ganadora/Ganadore
+            text  = lbl.ganador(gnd);
+            style = cellStyle("gold", "#111");
+          } else if (gX.third === c.id) {
+            // 3er/3ª Finalista
+            text  = ord3(gnd) + " Finalista";
+            style = cellStyle("#cd7f32", "#fff");
+          } else {
+            // 2º/2ª Finalista
+            text  = ord2(gnd) + " Finalista";
+            style = cellStyle("silver", "#111");
+          }
+        }
+      }
+
+
       cells.push({text,style});
     }
     return cells;
