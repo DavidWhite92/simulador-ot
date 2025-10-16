@@ -15,6 +15,26 @@ const pickRandom = (arr, k = 1) => { const c=[...arr],o=[]; while(k-- > 0 && c.l
 const randomHalfStep = (min=5,max=10) => { const steps=Math.round((max-min)/0.5)+1; return +(min+Math.floor(Math.random()*steps)*0.5).toFixed(1); };
 const randomPercentages = (n) => { const a=Array.from({length:n},()=>Math.pow(Math.random(),1.5)+0.05); const s=a.reduce((x,y)=>x+y,0); return a.map(v=>(v/s*100)).map(v=>+v.toFixed(2)); };
 
+// ----- Género: 'm' (él), 'f' (ella), 'e' (elle)
+const norm = s => s.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu,"");
+function detectGender(token){
+  const t = norm(token.trim());
+  if (t==="el" || t==="él" || t==="m" ) return "m";
+  if (t==="ella" || t==="f") return "f";
+  if (t==="elle" || t==="x" || t==="nb") return "e";
+  return null;
+}
+function parseNameLine(line){
+  // acepta formatos: "Nombre - ella", "Nombre (él)", "Nombre | elle"
+  const m = line.match(/(?:[-(|\s]\s*)(él|el|ella|elle|m|f|x|nb)\s*\)?\s*$/i);
+  const g = m ? detectGender(m[1]) : null;
+  const name = m ? line.replace(m[0], "").trim() : line.trim();
+  return { name, gender: g ?? "e" }; // por defecto 'e' (elle)
+}
+// sufijos por género
+const suf = g => g==="m"?"o":g==="f"?"a":"e";
+
+
 // Lightweight self-tests to prevent regressions
 function runSelfTests(){
   const results = [];
@@ -83,7 +103,11 @@ export default function SimuladorOT(){
       alert(`Hay ${lines.length} nombres. Deben ser exactamente 16, uno por línea (sin líneas vacías).`);
       return;
     }
-    const inits = lines.map(name=>({ id:uid(), name, status:"active", history:[] }));
+    
+  const inits = lines.map(line=>{
+  const { name, gender } = parseNameLine(line);
+  return { id:uid(), name, gender, status:"active", history:[] };
+});
     try{
       setContestants(inits);
       setGala(1); setViewGala(1);
@@ -298,6 +322,7 @@ export default function SimuladorOT(){
         <Card>
           <CardContent className="p-6 space-y-4">
             <p className="text-sm text-muted-foreground">Escribe exactamente 16 nombres (uno por línea) y pulsa <strong>Iniciar</strong>.</p>
+            <p className="text-xs text-muted-foreground">Puedes indicar género al final: <code>Nombre - él</code> / <code>Nombre - ella</code> / <code>Nombre - elle</code></p>
             <Textarea rows={12} value={namesInput} onChange={e=>setNamesInput(e.target.value)} />
             <div className="flex gap-2"><Button onClick={iniciar}>▶️ Iniciar</Button></div>
           </CardContent>
@@ -463,6 +488,17 @@ export default function SimuladorOT(){
 }
 
 function RecorridoTable({ contestants, summaries }){
+
+  // Usa el 'suf' que añadiste arriba en el archivo. Si no lo tienes aquí, añade:
+  const sufLocal = g => (g==="m"?"o":g==="f"?"a":"e");
+
+  // Obtener género de un id de concursante
+  const getGender = (id) => contestants.find(c => c.id === id)?.gender ?? "e";
+
+  // Palabras flexionadas
+  const palabraSalvado  = (g) => "Salvad"  + (typeof suf === "function" ? suf(g) : sufLocal(g));
+  const palabraNominado = (g) => "Nominad" + (typeof suf === "function" ? suf(g) : sufLocal(g));
+
   const headers=["Concursante", ...Array.from({length:15},(_,i)=> (i+1===15?"Gala Final":`Gala ${i+1}`))];
   const cellStyle=(bg,color="#000")=>({ background:bg, color, padding:"4px 6px", border:"1px solid #ddd", fontSize:12, textAlign:"center", whiteSpace:"nowrap" });
 
@@ -489,14 +525,44 @@ function RecorridoTable({ contestants, summaries }){
       if(elimGala && g===elimGala){ cells.push({text:"Eliminado", style:cellStyle("red","#fff")}); continue; }
       const s=summaries[g]; if(!s){ cells.push({text,style}); continue; }
 
-      if(g<=9){
-        const inTop3=(s.top3||[]).includes(c.id), favorito=s.favoritoId, juradoNom=s.juradoNominados||[], prof=s.profesorSalvoId, comp=s.salvadoCompanerosId, finales=s.finalNominees||[];
-        const by = finales.includes(c.id)?"finaltwo": comp===c.id?"compas": prof===c.id?"profes": (juradoNom.includes(c.id)?"jurado": null);
-        if(by){ const color={ jurado:"orange", profes:"yellowgreen", compas:"khaki", finaltwo:"orange" }[by]||"orange"; text=inTop3?"Nominadoº":"Nominado"; style=cellStyle(color,"#111"); }
-        else if(favorito===c.id){ text="Favorito"; style=cellStyle("DodgerBlue","#fff"); }
-        else if(inTop3){ text="Salvado"; style=cellStyle("#AFEEEE","#111"); }
-        else { text="Salvado"; style=cellStyle("#fff","#111"); }
+      if (g <= 9) {
+      const inTop3 = (s.top3 || []).includes(c.id);
+      const favorito = s.favoritoId;
+      const juradoNom = s.juradoNominados || [];
+      const prof = s.profesorSalvoId;
+      const comp = s.salvadoCompanerosId;
+      const finales = s.finalNominees || [];
+
+      // 👇 Helpers de género
+      const gnd = getGender(c.id);                // "m" | "f" | "e"
+      const nom = palabraNominado(gnd);           // Nominado/Nominada/Nominade
+      const salv = palabraSalvado(gnd);           // Salvado/Salvada/Salvade
+
+      const by =
+        finales.includes(c.id) ? "finaltwo" :
+        comp === c.id           ? "compas"    :
+        prof === c.id           ? "profes"    :
+        (juradoNom.includes(c.id) ? "jurado"  : null);
+
+      if (by) {
+        const color = { jurado:"orange", profes:"yellowgreen", compas:"khaki", finaltwo:"orange" }[by] || "orange";
+        text = inTop3 ? (nom + "º") : nom;       // Nominadoº / Nominadaº / Nominadeº si estuvo en Top3
+        style = cellStyle(color, "#111");
       }
+      else if (favorito === c.id) {
+        text = "Favorito";                        // (No pidiste flexionar "Favorito")
+        style = cellStyle("DodgerBlue", "#fff");
+      }
+      else if (inTop3) {
+        text = salv;                              // Salvado/Salvada/Salvade
+        style = cellStyle("#AFEEEE", "#111");
+      }
+      else {
+        text = salv;                              // Salvado/Salvada/Salvade
+        style = cellStyle("#fff", "#111");
+      }
+      }
+
       else if (g===10) {
         const g10=s.g10; if(g10?.sumas){ const sum=g10.sumas[c.id]; if(typeof sum==="number"){ const nota=`Nota: ${(sum/4).toFixed(2)}`; const topId=Object.entries(g10.sumas).sort((a,b)=>b[1]-a[1])[0][0]; if(c.id===topId) { text=nota; style=cellStyle("DodgerBlue","#fff"); } else if((g10.top3||[]).includes(c.id)) { text=nota; style=cellStyle("#fff","#111"); } else if(g10.cuarto===c.id) { text=nota; style=cellStyle("yellowgreen","#111"); } else if(g10.quinto===c.id) { text=nota; style=cellStyle("khaki","#111"); } else if((g10.restantes||[]).includes(c.id) || (g10.nominados4||[]).includes(c.id)) { text=nota; style=cellStyle("orange","#111"); } else { text=nota; style=cellStyle("#fff","#111"); } } }
       }
