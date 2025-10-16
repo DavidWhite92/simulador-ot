@@ -17,6 +17,22 @@ const randomPercentages = (n) => { const a=Array.from({length:n},()=>Math.pow(Ma
 
 // ----- Género: 'm' (él), 'f' (ella), 'e' (elle)
 const norm = s => s.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu,"");
+
+// Genera un resultado de duelo con más variedad.
+// Devuelve { high, low } con dos decimales: high entre 50 y 95 aprox.
+function randomDuelPercents() {
+  const r = Math.random();
+  let high;
+  if (r < 0.50)       high = 50  + Math.random()*5;   // 50–55  (duelo muy cerrado) ~50%
+  else if (r < 0.80)  high = 55  + Math.random()*10;  // 55–65  (cerrado/medio)     ~30%
+  else if (r < 0.95)  high = 65  + Math.random()*20;  // 65–85  (contundente)       ~15%
+  else                high = 85  + Math.random()*10;  // 85–95  (aplastante)        ~5%
+
+  high = +high.toFixed(2);
+  const low = +(100 - high).toFixed(2);
+  return { high, low };
+}
+
 function detectGender(token){
   const t = norm(token.trim());
   if (t==="el" || t==="él" || t==="m" ) return "m";
@@ -65,7 +81,7 @@ function runSelfTests(){
     results.push(reveal[reveal.length-2]===bottom2[1].id && reveal[reveal.length-1]===bottom2[0].id?"reveal order ok":"reveal order FAIL");
 
     // g11 duel split sums to 100 and high>=50
-    const raw2=+(45+Math.random()*10).toFixed(2); const high2=+Math.max(raw2,100-raw2).toFixed(2); const low2=+(100-high2).toFixed(2);
+    const raw2=+(45+Math.random()*10).toFixed(2); const { high, low } = randomDuelPercents();
     results.push(Math.abs(high2+low2-100)<1e-9 && high2>=50 && low2<=50?"g11 split ok":"g11 split FAIL");
   }catch(e){ results.push("tests threw: "+String(e)); }
   return results;
@@ -130,7 +146,7 @@ export default function SimuladorOT(){
     if(carryNominees.length!==2){ setStage(nextStageFor(gala)); return; }
     const [a,b]=carryNominees;
     const base=50+(Math.random()*10-5), widen=Math.random()<0.25?Math.random()*10-5:0; const raw=clamp(base+widen,40,60);
-    const high=+Math.max(raw,100-raw).toFixed(2); const low=+(100-high).toFixed(2);
+    const { high, low } = randomDuelPercents();
     const assignHigherToA=Math.random()<0.5; const pctA=assignHigherToA?high:low; const pctB=assignHigherToA?low:high;
     const winner=pctA>pctB?a:b; const loser=winner===a?b:a;
     setContestants(prev=> prev.map(c=> c.id===loser?{...c,status:"eliminado",history:[...c.history,{gala,evento:"Eliminado",detalle:`${fmtPct(c.id===a?pctB:pctA)} vs ${fmtPct(c.id===a?pctA:pctB)}`}]}: c ));
@@ -209,9 +225,7 @@ export default function SimuladorOT(){
   function gala11Publico(){
     if(carryNominees.length!==2){ pushLog("⚠️ En Gala 11 deben quedar 2 no-finalistas."); return; }
     const [a,b]=carryNominees;
-    const raw=+(45+Math.random()*10).toFixed(2);
-    const high=+Math.max(raw,100-raw).toFixed(2);
-    const low =+(100-high).toFixed(2);
+    const { high, low } = randomDuelPercents();
     const highForA = Math.random()<0.5;
     const pctA = highForA?high:low;
     const pctB = highForA?low:high;
@@ -257,7 +271,7 @@ export default function SimuladorOT(){
     const { bottomLow, bottomHigh, duelDone } = gstate.g12;
     if(duelDone){ pushLog("ℹ️ Duelo ya resuelto."); return; }
     // ambos últimos son nominados al duelo (ya implícito); ahora revelamos el resultado
-    const raw=+(50+(Math.random()*16-8)).toFixed(2); const high=+Math.max(raw,100-raw).toFixed(2); const low=+(100-high).toFixed(2);
+    const { high, low } = randomDuelPercents();
     const winner=Math.random()<0.55?bottomHigh:bottomLow; const loser=winner.id===bottomLow.id?bottomHigh:bottomLow;
     pushLog(`🔴 ${fmtPct(bottomHigh.pct)} pertenece a <strong>${bottomHigh.name}</strong> (nominado al duelo).`);
     pushLog(`🔴 ${fmtPct(bottomLow.pct)} pertenece a <strong>${bottomLow.name}</strong> (nominado al duelo).`);
