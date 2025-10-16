@@ -33,6 +33,52 @@ function randomDuelPercents() {
   return { high, low };
 }
 
+// Baraja valoraciones con reglas:
+//  - Nunca más de 2 nominados seguidos
+//  - El último nominado sale en penúltima o última posición
+function buildValoracionesOrder(allIds, nomineeIds){
+  const N = allIds.length;
+  const nomSet = new Set(nomineeIds);
+  const nom   = nomineeIds.slice();
+  const otros = allIds.filter(id => !nomSet.has(id));
+
+  const shuffleInPlace = arr => { for (let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; };
+  shuffleInPlace(nom); shuffleInPlace(otros);
+
+  // reservar 1 nominado para penúltima/última
+  let slotUlt = Math.random() < 0.5 ? N-1 : N-2;
+  if (nom.length === 0) slotUlt = N-1;
+  const reservado = nom.length ? nom.pop() : null;
+
+  const order = [];
+  let consecNom = 0;
+  let nomInFirst3 = 0;
+
+  for (let i = 0; i < N; i++) {
+    if (reservado && i === slotUlt) {
+      if (consecNom === 2 && otros.length) { order.push(otros.pop()); consecNom = 0; i++; }
+      order.push(reservado); consecNom++; if (i < 3) nomInFirst3++;
+      continue;
+    }
+
+    const earlyCap = (i < 3 && nomInFirst3 >= 1);      // en primeras 3, máx 1 nominable
+    const puedeNom = nom.length > 0 && consecNom < 2 && !earlyCap;
+    const debeNom  = !earlyCap && otros.length === 0 && nom.length > 0 && consecNom < 2;
+
+    let pick = null;
+    if (debeNom || (puedeNom && Math.random() < 0.5)) {
+      pick = nom.pop(); consecNom++; if (i < 3) nomInFirst3++;
+    } else {
+      pick = otros.pop();
+      if (pick == null) { pick = nom.pop(); consecNom++; if (i < 3) nomInFirst3++; }
+      else { consecNom = 0; }
+    }
+    order.push(pick);
+  }
+
+  return order;
+}
+
 function detectGender(token){
   const t = norm(token.trim());
   if (t==="el" || t==="él" || t==="m" ) return "m";
@@ -167,6 +213,8 @@ export default function SimuladorOT(){
   }
   function revelarTop3YFavorito(){
     if(!gstate || gstate.top3.length===0) return; if(gala>=10){ pushLog(`ℹ️ Desde la Gala 10 no hay favorito. Continua con la evaluación del jurado.`); setStage("juradoEvaluando"); return; }
+   
+
     const top3 = gstate.top3.map(id=>gstate.publicRank.find(r=>r.id===id)).filter(Boolean).sort((a,b)=>b.pct-a.pct);
     const favorito=top3[0]; const top3Pct=top3.map(t=>t.pct); const salvados=new Set(gstate.salvados); salvados.add(favorito.id);
     pushLog(`🌟 <strong>Favorito/a</strong>: ${nameOf(favorito.id)}. Porcentajes Top3: ${top3.map(t=>`${nameOf(t.id)} ${fmtPct(t.pct)}`).join(" · ")}`);
@@ -175,32 +223,182 @@ export default function SimuladorOT(){
     setStage("juradoEvaluando");
   }
   function evaluarSiguientePorJurado(){
-    if(!gstate) return; const vivos=contestants.filter(c=>c.status==="active").map(c=>c.id);
-    const writeAt=(idx,html)=> setGalaLogs(prev=>{ const arr=[...(prev[gala]||[])]; arr[idx]=html; return {...prev,[gala]:arr}; });
-    if(!gstate.currentEvaluadoId){
-      const pend=gstate.evaluacionOrden.filter(id=>vivos.includes(id)&&!gstate.salvados.has(id)&&!gstate.nominados.includes(id));
-      if(!pend.length){
-        let nominados=[...gstate.nominados]; const rest=gstate.evaluacionOrden.filter(id=>!gstate.salvados.has(id)&&!nominados.includes(id));
-        while(nominados.length<4&&rest.length) nominados.push(rest.shift());
-        setGstate({...gstate,nominados,currentEvaluadoId:undefined,currentEvaluadoLogIndex:undefined});
-        pushLog(`🚨 <strong>Propuestos por el jurado (4)</strong>: ${nominados.map(nameOf).join(", ")}.`);
-        setSummaries(s=>({...s,[gala]:{...(s[gala]||{gala}), juradoNominados:nominados}}));
-        setStage("profesSalvan");
+      if(!gstate) return;
+
+      // 1) Construir el orden al entrar por primera vez en el jurado (favorito inmune, resto nominable)
+      if (!gstate.evaluacionOrden || gstate.evaluacionOrden.length === 0) {
+        const vivosIds  = contestants.filter(c => c.status === "active").map(c => c.id);
+        const favId     = gstate.favoritoId || null;
+        const nomineeIds = favId ? vivosIds.filter(id => id !== favId) : [...vivosIds];
+
+        const ordenValoraciones = buildValoracionesOrder(vivosIds, nomineeIds);
+
+        setGstate(st => ({
+          ...st,
+          evaluacionOrden: ordenValoraciones,
+          currentEvaluadoIndex: 0,
+          currentEvaluadoId: null
+        }));
+        setSummaries(s => ({
+          ...s,
+          [gala]: { ...(s[gala] || { gala }), ordenValoraciones }
+        }));
+        return; // el siguiente click ya usa el orden creado
+      }
+
+      const vivos = contestants.filter(c => c.status === "active").map(c => c.id);
+      const writeAt = (idx, html) =>
+        setGalaLogs(prev => { const arr = [ ...(prev[gala] || []) ]; arr[idx] = html; return { ...prev, [gala]: arr }; });
+
+      // 2) Si no hay "actual evaluado", abrir ficha y placeholder
+      if (!gstate.currentEvaluadoId) {
+        const pend = gstate.evaluacionOrden.filter(id => vivos.includes(id) && !gstate.salvados.has(id) && !gstate.nominados.includes(id));
+
+        // Si no queda nadie por evaluar: completar nominados hasta 4 y pasar de etapa
+        if (!pend.length) {
+          let nominados = [ ...gstate.nominados ];
+          const rest = gstate.evaluacionOrden.filter(id => !gstate.salvados.has(id) && !nominados.includes(id));
+          while (nominados.length < 4 && rest.length) nominados.push(rest.shift());
+
+          setGstate({ ...gstate, nominados, currentEvaluadoId: undefined, currentEvaluadoLogIndex: undefined });
+          pushLog(`🚨 <strong>Propuestos por el jurado (4)</strong>: ${nominados.map(nameOf).join(", ")}.`);
+          setSummaries(s => ({ ...s, [gala]: { ...(s[gala] || { gala }), juradoNominados: nominados } }));
+          setStage("profesSalvan");
+          return;
+        }
+
+        // Hay alguien por evaluar → abre log “...” y guarda referencia
+        const actualId = pend[0];
+        const idx = (galaLogs[gala]?.length || 0);
+        setGalaLogs(prev => { const arr = [ ...(prev[gala] || []) ]; arr.push(`⚖️ Jurado evalúa a <strong>${nameOf(actualId)}</strong> → …`); return { ...prev, [gala]: arr }; });
+        setGstate({ ...gstate, currentEvaluadoId: actualId, currentEvaluadoLogIndex: idx });
         return;
       }
-      const actualId=pend[0]; const idx=(galaLogs[gala]?.length||0);
-      setGalaLogs(prev=>{ const arr=[...(prev[gala]||[])]; arr.push(`⚖️ Jurado evalúa a <strong>${nameOf(actualId)}</strong> → …`); return {...prev,[gala]:arr}; });
-      setGstate({...gstate,currentEvaluadoId:actualId,currentEvaluadoLogIndex:idx});
-      return;
+
+      // 3) Ya hay "actual evaluado": decidir acción y actualizar estado
+      const id = gstate.currentEvaluadoId;
+      const logIdx = gstate.currentEvaluadoLogIndex ?? (galaLogs[gala]?.length || 1) - 1;
+
+      // reconstruir pendientes (id primero)
+      let pend = gstate.evaluacionOrden.filter(x => vivos.includes(x) && !gstate.salvados.has(x) && !gstate.nominados.includes(x));
+      if (pend[0] !== id) pend = [ id, ...pend.filter(x => x !== id) ];
+
+      const remaining = pend.length;
+      const needed = 4 - gstate.nominados.length;
+      let plan = gstate.finalTwoPlan;
+
+      // 3A) Barrera: si ya hay 3 nominados y quedan >2 por evaluar, este va salvado
+      if (gstate.nominados.length >= 3 && remaining > 2) {
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → cruza la pasarela (salvado/a).`);
+        const salvados = new Set(gstate.salvados); salvados.add(id);
+        setGstate({
+          ...gstate,
+          currentEvaluadoId: undefined,
+          currentEvaluadoLogIndex: undefined,
+          salvados,
+          evalResults: [ ...gstate.evalResults, { id, result: "salvado" } ],
+          evaluacionOrden: gstate.evaluacionOrden.filter(x => x !== id)
+        });
+        return;
+      }
+
+      // 3B) Plan especial para las dos últimas valoraciones
+      if (remaining === 2 && !plan) {
+        if (needed >= 2) {
+          plan = ["nominado", "nominado"];
+        } else if (needed === 1) {
+          plan = Math.random() < 0.5 ? ["nominado", "salvado"] : ["salvado", "nominado"];
+        } else {
+          plan = ["salvado", "salvado"];
+        }
+      }
+
+      // 3C) Decidir acción con sesgo de salvado al inicio y ventana deslizante
+      const evIndex = gstate.evalResults.length;                // cuántos ya evaluados (0 = primero, 1 = segundo, ...)
+      const last2   = gstate.evalResults.slice(-2).map(r => r.result);
+      let decision;
+
+      if (remaining === needed) {
+        decision = "nominado";
+      }
+      else if (remaining === 2 && plan) {
+        decision = plan[0];
+      }
+      else if (evIndex < 3 && gstate.nominados.length >= 1) {
+        // en las 3 primeras valoraciones, como mucho 1 nominado
+        decision = "salvado";
+      }
+      else {
+        // ventana deslizante: si en las últimas 3 ya hubo 2 nominados, este va salvado
+        const last3 = gstate.evalResults.slice(-3).map(r => r.result);
+        const nomsInLast3 = last3.filter(x => x === "nominado").length;
+        if (nomsInLast3 >= 2) {
+          decision = "salvado";
+        } else {
+          // prob original por % público
+          const votePct  = gstate.publicRank.find(r => r.id === id)?.pct ?? 50;
+          const probBase = clamp(0.55 - (votePct - 50) / 150, 0.25, 0.8); // prob de ser NOMINADO
+
+          // ajustes de ritmo
+          const ev    = gstate.evalResults.length;
+          const total = ev + remaining;
+          const ratio = total ? ev / total : 0;
+          let prob    = probBase;
+          if (ratio < 0.4 && gstate.nominados.length >= 1) prob = Math.max(0.15, prob - 0.2);
+          if (ratio < 0.6 && gstate.nominados.length >= 2) prob = Math.max(0.15, prob - 0.25);
+
+          // sesgo de salvado para 1.º y 2.º (más fuerte en galas tempranas)
+          const earlyNomBias = (() => {
+            if (evIndex === 0) {               // primero
+              if (gala <= 3) return -0.28;
+              if (gala <= 6) return -0.20;
+              return -0.14;
+            }
+            if (evIndex === 1) {               // segundo
+              if (gala <= 3) return -0.18;
+              if (gala <= 6) return -0.12;
+              return -0.08;
+            }
+            return 0;
+          })();
+
+          prob = clamp(prob + earlyNomBias, 0.05, 0.85);  // reducir prob de NOMINADO para 1.º/2.º
+          decision = Math.random() < prob ? "nominado" : "salvado";
+        }
+      }
+
+      // seguridad: nunca 3 nominados seguidos
+      if (decision === "nominado" && last2[0] === "nominado" && last2[1] === "nominado") {
+        decision = "salvado";
+      }
+
+      // 3D) Aplicar decisión + avanzar plan + sacar de orden
+      if (decision === "nominado" && gstate.nominados.length < 4) {
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINADO/A</strong>.`);
+        setGstate({
+          ...gstate,
+          currentEvaluadoId: undefined,
+          currentEvaluadoLogIndex: undefined,
+          nominados: [ ...gstate.nominados, id ],
+          evalResults: [ ...gstate.evalResults, { id, result: "nominado" } ],
+          finalTwoPlan: plan ? plan.slice(1) : undefined,
+          evaluacionOrden: gstate.evaluacionOrden.filter(x => x !== id)
+        });
+      } else {
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → cruza la pasarela (salvado/a).`);
+        const salvados = new Set(gstate.salvados); salvados.add(id);
+        setGstate({
+          ...gstate,
+          currentEvaluadoId: undefined,
+          currentEvaluadoLogIndex: undefined,
+          salvados,
+          evalResults: [ ...gstate.evalResults, { id, result: "salvado" } ],
+          finalTwoPlan: plan ? plan.slice(1) : undefined,
+          evaluacionOrden: gstate.evaluacionOrden.filter(x => x !== id)
+        });
+      }
     }
-    const id=gstate.currentEvaluadoId; const logIdx=gstate.currentEvaluadoLogIndex ?? (galaLogs[gala]?.length||1)-1;
-    let pend=gstate.evaluacionOrden.filter(x=>vivos.includes(x)&&!gstate.salvados.has(x)&&!gstate.nominados.includes(x));
-    if(pend[0]!==id) pend=[id,...pend.filter(x=>x!==id)];
-    const remaining=pend.length, needed=4-gstate.nominados.length; let plan=gstate.finalTwoPlan; if(remaining===2 && !plan) plan=["nominado","salvado"]; const last2=gstate.evalResults.slice(-2).map(r=>r.result);
-    let decision; if(remaining===needed) decision="nominado"; else if(remaining===2&&plan) decision=plan[0]; else { const votePct=gstate.publicRank.find(r=>r.id===id)?.pct ?? 50; const prob=clamp(0.55-(votePct-50)/150,0.25,0.8); const ev=gstate.evalResults.length; const total=ev+remaining; const ratio=total?ev/total:0; let adj=prob; if(ratio<0.4&&gstate.nominados.length>=1) adj=Math.max(0.15,prob-0.2); if(ratio<0.6&&gstate.nominados.length>=2) adj=Math.max(0.15,prob-0.25); decision=Math.random()<adj?"nominado":"salvado"; if(decision==="nominado" && last2[0]==="nominado" && last2[1]==="nominado") decision="salvado"; }
-    if(decision==="nominado"&&gstate.nominados.length<4){ writeAt(logIdx,`⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINADO/A</strong>.`); setGstate({...gstate,currentEvaluadoId:undefined,currentEvaluadoLogIndex:undefined,nominados:[...gstate.nominados,id],evalResults:[...gstate.evalResults,{id,result:"nominado"}],finalTwoPlan:plan?plan.slice(1):undefined,evaluacionOrden:gstate.evaluacionOrden.filter(x=>x!==id)}); }
-    else { writeAt(logIdx,`⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → cruza la pasarela (salvado/a).`); const salvados=new Set(gstate.salvados); salvados.add(id); setGstate({...gstate,currentEvaluadoId:undefined,currentEvaluadoLogIndex:undefined,salvados,evalResults:[...gstate.evalResults,{id,result:"salvado"}],finalTwoPlan:plan?plan.slice(1):undefined,evaluacionOrden:gstate.evaluacionOrden.filter(x=>x!==id)}); }
-  }
+
   function profesoresSalvanUno(){ if(!gstate || gstate.nominados.length!==4) return; const salvado=pickRandom(gstate.nominados,1)[0]; pushLog(`🎓 Profesores salvan a <strong>${nameOf(salvado)}</strong>.`); const nominados=gstate.nominados.filter(id=>id!==salvado); const salvados=new Set(gstate.salvados); salvados.add(salvado); setGstate({...gstate, profesorSalvoId:salvado, nominados, salvados}); setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), profesorSalvoId:salvado }})); setStage("companerosVotan"); }
   function companerosVotan(){ if(!gstate) return; const electores=Array.from(gstate.salvados), candidatos=gstate.nominados, votos=[]; electores.forEach(v=>{ votos.push({voterId:v,votedId:pickRandom(candidatos,1)[0]}); }); const recuento=Object.fromEntries(candidatos.map(c=>[c,0])); votos.forEach(v=>recuento[v.votedId]++); let max=Math.max(...Object.values(recuento)); let empatados=Object.entries(recuento).filter(([,n])=>n===max).map(([id])=>id); if(empatados.length>1 && gstate.favoritoId){ const votoFav=votos.find(x=>x.voterId===gstate.favoritoId)?.votedId; if(votoFav && empatados.includes(votoFav)) recuento[votoFav]++; max=Math.max(...Object.values(recuento)); empatados=Object.entries(recuento).filter(([,n])=>n===max).map(([id])=>id); } const ganador=pickRandom(empatados,1)[0]; const votosList = votos.map(v=>`<li>${nameOf(v.voterId)} → ${nameOf(v.votedId)}</li>`).join(""); pushLog(`🧑‍🤝‍🧑 Votación de compañeros:<ul style=\"margin:4px 0 0 16px;\">${votosList}</ul>${gstate.favoritoId?"<div class=\\\"text-xs\\\">* El voto del favorito vale doble en caso de empate</div>":""}`); pushLog(`✅ Más votado por compañeros: <strong>${nameOf(ganador)}</strong> (se salva).`); const nominadosRestantes=candidatos.filter(id=>id!==ganador); const salvados=new Set(gstate.salvados); salvados.add(ganador); setGstate({...gstate, votosCompaneros:votos, salvadoCompanerosId:ganador, nominados:nominadosRestantes, salvados}); setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), salvadoCompanerosId:ganador, finalNominees:nominadosRestantes }})); pushLog(`🟥 Nominados para la próxima gala: <strong>${nameOf(nominadosRestantes[0])}</strong> vs <strong>${nameOf(nominadosRestantes[1])}</strong>.`); setCarryNominees(nominadosRestantes); setStage("galaCerrada"); }
 
