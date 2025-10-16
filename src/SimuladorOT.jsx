@@ -367,11 +367,23 @@ export default function SimuladorOT(){
         }
       }
 
-      // seguridad: nunca 3 nominados seguidos
-      if (decision === "nominado" && last2[0] === "nominado" && last2[1] === "nominado") {
+      // seguridad: nunca 3 nominados seguidos, PERO respeta el plan de las dos últimas
+      const inLastTwo = (remaining <= 2);
+      if (!inLastTwo && decision === "nominado" && last2[0] === "nominado" && last2[1] === "nominado") {
         decision = "salvado";
       }
 
+      // Postcondición: que aún sea posible llegar a 4 nominados
+      let nomAfter = gstate.nominados.length + (decision === "nominado" ? 1 : 0);
+      let remAfter = remaining - 1;
+      let needAfter = 4 - nomAfter;
+      if (needAfter > remAfter) {
+        // si no llegamos a 4, forzamos nominación aquí
+        decision = "nominado";
+        nomAfter = gstate.nominados.length + 1;
+        remAfter = remaining - 1;
+      }
+      
       // 3D) Aplicar decisión + avanzar plan + sacar de orden
       if (decision === "nominado" && gstate.nominados.length < 4) {
         writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINADO/A</strong>.`);
