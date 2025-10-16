@@ -66,7 +66,11 @@ export default function SimuladorOT(){
   useEffect(()=>{ setTestResults(runSelfTests()); },[]);
 
   const active     = useMemo(()=>contestants.filter(c=>c.status==="active"),[contestants]);
-  const finalists  = useMemo(()=>contestants.filter(c=>c.status==="finalista"),[contestants]);
+  const finalists = useMemo(
+  () => contestants.filter(c => c.status === "finalista" || c.status === "ganador"),
+  [contestants]
+);
+
   const eliminated = useMemo(()=>contestants.filter(c=>c.status==="eliminado"),[contestants]);
 
   const pushLog = (entry, galaNum=gala)=> setGalaLogs(logs=>({...logs,[galaNum]:[...(logs[galaNum]||[]), entry]}));
@@ -257,16 +261,28 @@ export default function SimuladorOT(){
     setGstate(st=>({...st, g15:{ ...st.g15, thirdRevealed:true }}));
   }
   function g15_revealWinner(){
-    if(!gstate?.g15){ pushLog("⚠️ Primero pulsa '📊 Mostrar porcentajes ciegos (Final)'."); return; }
-    if(!gstate.g15.thirdRevealed){ pushLog("⚠️ Primero revela el tercer clasificado."); return; }
-    if(gstate.g15.winnerRevealed){ pushLog("ℹ️ El ganador ya fue revelado."); return; }
-    const ganador=gstate.g15.tabla[0];
-    pushLog(`👑 Ganador/a del simulador: <strong>${ganador.name}</strong>.`);
-    const tercero=gstate.g15.tabla[2];
-    setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), g15:{ tabla:gstate.g15.tabla.map(t=>({id:t.id,pct:t.pct})), third:tercero.id, winner:ganador.id } }}));
-    setGstate(st=>({...st, g15:{ ...st.g15, winnerRevealed:true }}));
-    setStage("galaCerrada");
-  }
+  if(!gstate?.g15){ pushLog("⚠️ Primero pulsa '📊 Mostrar porcentajes ciegos (Final)'."); return; }
+  if(!gstate.g15.thirdRevealed){ pushLog("⚠️ Primero revela el tercer clasificado."); return; }
+  if(gstate.g15.winnerRevealed){ pushLog("ℹ️ El ganador ya fue revelado."); return; }
+
+  const ganador = gstate.g15.tabla[0];
+  pushLog(`👑 Ganador/a del simulador: <strong>${ganador.name}</strong>.`);
+  const tercero = gstate.g15.tabla[2];
+
+  // ✅ NUEVO: marca al ganador para que la Plantilla muestre 🏆 Ganador
+  setContestants(prev =>
+    prev.map(c =>
+      c.id === ganador.id
+        ? { ...c, status: "ganador", history: [...c.history, { gala, evento: "Ganador/a (G15)" }] }
+        : c
+    )
+  );
+
+  setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), g15:{ tabla:gstate.g15.tabla.map(t=>({id:t.id,pct:t.pct})), third:tercero.id, winner:ganador.id } }}));
+  setGstate(st=>({...st, g15:{ ...st.g15, winnerRevealed:true }}));
+  setStage("galaCerrada");
+}
+
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -377,6 +393,7 @@ export default function SimuladorOT(){
                                 {c.status==="active" && (<Badge variant="secondary">En academia</Badge>)}
                                 {c.status==="eliminado" && (<Badge variant="destructive">Eliminado</Badge>)}
                                 {c.status==="finalista" && (<Badge>⭐ Finalista</Badge>)}
+                                {c.status==="ganador" && (<Badge>🏆 Ganador</Badge>)}
                               </div>
                             </div>
                           </CardContent>
