@@ -640,7 +640,72 @@ export default function SimuladorOT(){
     }
 
   function profesoresSalvanUno(){ if(!gstate || gstate.nominados.length!==4) return; const salvado=pickRandom(gstate.nominados,1)[0]; pushLog(`🎓 Profesores salvan a <strong>${nameOf(salvado)}</strong>.`); const nominados=gstate.nominados.filter(id=>id!==salvado); const salvados=new Set(gstate.salvados); salvados.add(salvado); setGstate({...gstate, profesorSalvoId:salvado, nominados, salvados}); setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), profesorSalvoId:salvado }})); setStage("companerosVotan"); }
-  function companerosVotan(){ if(!gstate) return; const electores=Array.from(gstate.salvados), candidatos=gstate.nominados, votos=[]; electores.forEach(v=>{ votos.push({voterId:v,votedId:pickRandom(candidatos,1)[0]}); }); const recuento=Object.fromEntries(candidatos.map(c=>[c,0])); votos.forEach(v=>recuento[v.votedId]++); let max=Math.max(...Object.values(recuento)); let empatados=Object.entries(recuento).filter(([,n])=>n===max).map(([id])=>id); if(empatados.length>1 && gstate.favoritoId){ const votoFav=votos.find(x=>x.voterId===gstate.favoritoId)?.votedId; if(votoFav && empatados.includes(votoFav)) recuento[votoFav]++; max=Math.max(...Object.values(recuento)); empatados=Object.entries(recuento).filter(([,n])=>n===max).map(([id])=>id); } const ganador=pickRandom(empatados,1)[0]; const votosList = votos.map(v=>`<li>${nameOf(v.voterId)} → ${nameOf(v.votedId)}</li>`).join(""); pushLog(`🧑‍🤝‍🧑 Votación de compañeros:<ul style=\"margin:4px 0 0 16px;\">${votosList}</ul>${gstate.favoritoId?"<div class=\\\"text-xs\\\">* El voto del favorito vale doble en caso de empate</div>":""}`); pushLog(`✅ Más votado por compañeros: <strong>${nameOf(ganador)}</strong> (se salva).`); const nominadosRestantes=candidatos.filter(id=>id!==ganador); const salvados=new Set(gstate.salvados); salvados.add(ganador); setGstate({...gstate, votosCompaneros:votos, salvadoCompanerosId:ganador, nominados:nominadosRestantes, salvados}); setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), salvadoCompanerosId:ganador, finalNominees:nominadosRestantes }})); pushLog(`🟥 Nominados para la próxima gala: <strong>${nameOf(nominadosRestantes[0])}</strong> vs <strong>${nameOf(nominadosRestantes[1])}</strong>.`); setCarryNominees(nominadosRestantes); setStage("galaCerrada"); }
+  
+  function companerosVotan(){
+      if(!gstate) return;
+
+      const electores = Array.from(gstate.salvados);
+      const candidatos = gstate.nominados;
+      const votos = [];
+
+      // Cada salvado vota a uno de los 3 nominados
+      electores.forEach(v=>{
+        votos.push({ voterId:v, votedId:pickRandom(candidatos,1)[0] });
+      });
+
+      // Conteo
+      const recuento = Object.fromEntries(candidatos.map(c=>[c,0]));
+      votos.forEach(v => recuento[v.votedId]++);
+
+      // Desempate: el voto del favorito vale doble SOLO en empate
+      let max = Math.max(...Object.values(recuento));
+      let empatados = Object.entries(recuento).filter(([,n])=>n===max).map(([id])=>id);
+
+      if(empatados.length>1 && gstate.favoritoId){
+        const votoFav = votos.find(x=>x.voterId===gstate.favoritoId)?.votedId;
+        if(votoFav && empatados.includes(votoFav)) {
+          recuento[votoFav]++; // aplica “doble” en desempate
+          max = Math.max(...Object.values(recuento));
+          empatados = Object.entries(recuento).filter(([,n])=>n===max).map(([id])=>id);
+        }
+      }
+
+      // 1) Lista vertical de votos (como antes)
+      const votosList = votos.map(v=>`<li>${nameOf(v.voterId)} → ${nameOf(v.votedId)}</li>`).join("");
+      pushLog(`🧑‍🤝‍🧑 Votación de compañeros:<ul style="margin:4px 0 0 16px;">${votosList}</ul>${gstate.favoritoId?"<div class=\"text-xs\">* El voto del favorito vale doble en caso de empate</div>":""}`);
+
+      // 2) 📊 Recuento (ahora debajo de la lista)
+      const contadorHTML = candidatos
+        .map(id => `<strong>${nameOf(id)}</strong> ${recuento[id]}`)
+        .join(" · ");
+      pushLog(`📊 Recuento de votos (compañeros): ${contadorHTML}`);
+
+      // 3) Anuncio del salvado
+      const ganador = pickRandom(empatados,1)[0];
+      pushLog(`✅ Más votado por compañeros: <strong>${nameOf(ganador)}</strong> (se salva).`);
+
+      // Avance de estado habitual
+      const nominadosRestantes = candidatos.filter(id=>id!==ganador);
+      const salvados = new Set(gstate.salvados); salvados.add(ganador);
+
+      setGstate({
+        ...gstate,
+        votosCompaneros: votos,
+        salvadoCompanerosId: ganador,
+        nominados: nominadosRestantes,
+        salvados
+      });
+
+      setSummaries(s=>({
+        ...s,
+        [gala]: { ...(s[gala]||{gala}), salvadoCompanerosId:ganador, finalNominees:nominadosRestantes }
+      }));
+
+      pushLog(`🟥 Nominados para la próxima gala: <strong>${nameOf(nominadosRestantes[0])}</strong> vs <strong>${nameOf(nominadosRestantes[1])}</strong>.`);
+      setCarryNominees(nominadosRestantes);
+      setStage("galaCerrada");
+    }
+
 
   // Gala 10
   function gala10PuntuarJueces(){
@@ -657,7 +722,59 @@ export default function SimuladorOT(){
     setStage("gala10_profes");
   }
   function gala10Profes(){ if(!gstate || !gstate.nominados || gstate.nominados.length!==4) return; const salvado=pickRandom(gstate.nominados,1)[0]; setContestants(prev=>prev.map(c=>c.id===salvado?{...c,status:"finalista",history:[...c.history,{gala,evento:"4º finalista (profes, G10)"}]}:c)); pushLog(`🎓 Profesores eligen 4º finalista (G10): <strong>${nameOf(salvado)}</strong>.`); const restantes=gstate.nominados.filter(id=>id!==salvado); setGstate({...gstate, nominados:restantes, profesorSalvoId:salvado}); setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), g10:{ ...(s[gala]?.g10||{}), cuarto:salvado, restantes } }})); setStage("gala10_compas"); }
-  function gala10Compas(){ if(!gstate) return; const electores=contestants.filter(c=>c.status==="finalista").map(c=>c.id); const candidatos=gstate.nominados; const votos=[]; electores.forEach(v=>{ const elegido=pickRandom(candidatos,1)[0]; votos.push({voterId:v,votedId:elegido}); }); const recuento={ [candidatos[0]]:0,[candidatos[1]]:0,[candidatos[2]]:0 }; votos.forEach(v=>recuento[v.votedId]++); const max=Math.max(...Object.values(recuento)); const empatados=Object.entries(recuento).filter(([,n])=>n===max).map(([id])=>id); const ganador=pickRandom(empatados,1)[0]; setContestants(prev=>prev.map(c=>c.id===ganador?{...c,status:"finalista",history:[...c.history,{gala,evento:"5º finalista (compañeros, G10)"}]}:c)); pushLog(`🧑‍🤝‍🧑 Compañeros eligen 5º finalista (G10): <strong>${nameOf(ganador)}</strong>. Votos: ${votos.map(v=>`${nameOf(v.voterId)} → ${nameOf(v.votedId)}`).join(" · ")}`); const restantes=candidatos.filter(id=>id!==ganador); setCarryNominees(restantes); pushLog(`➡️ A <strong>Gala 11</strong>: el público decide el 6º finalista entre ${restantes.map(nameOf).join(" y ")}.`); setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), g10:{ ...(s[gala]?.g10||{}), quinto:ganador, restantes } }})); setStage("galaCerrada"); }
+  
+  function gala10Compas(){
+      if(!gstate) return;
+
+      const electores = contestants.filter(c=>c.status==="finalista").map(c=>c.id);
+      const candidatos = gstate.nominados; // 3 ids
+      const votos = [];
+
+      // Emisión de votos
+      electores.forEach(v=>{
+        const elegido = pickRandom(candidatos,1)[0];
+        votos.push({ voterId:v, votedId:elegido });
+      });
+
+      // Conteo
+      const recuento = { [candidatos[0]]:0, [candidatos[1]]:0, [candidatos[2]]:0 };
+      votos.forEach(v=> recuento[v.votedId]++);
+
+      // 1) Lista vertical de votos (igual que Galas 1–9)
+      const votosList = votos.map(v=>`<li>${nameOf(v.voterId)} → ${nameOf(v.votedId)}</li>`).join("");
+      pushLog(`🧑‍🤝‍🧑 Votación de compañeros (G10):<ul style="margin:4px 0 0 16px;">${votosList}</ul>`);
+
+      // 2) 📊 Recuento (debajo de la lista)
+      const contadorHTML = candidatos
+        .map(id => `<strong>${nameOf(id)}</strong> ${recuento[id]}`)
+        .join(" · ");
+      pushLog(`📊 Recuento de votos (compañeros, G10): ${contadorHTML}`);
+
+      // Ganador (si hay empate, azar entre empatados)
+      const max = Math.max(...Object.values(recuento));
+      const empatados = Object.entries(recuento).filter(([,n])=>n===max).map(([id])=>id);
+      const ganador = pickRandom(empatados,1)[0];
+
+      // Efectos y logs
+      setContestants(prev=>prev.map(c=>c.id===ganador?{
+        ...c, status:"finalista", history:[...c.history,{gala,evento:"5º finalista (compañeros, G10)"}]
+      }:c));
+
+      pushLog(`✅ Más votado por compañeros: <strong>${nameOf(ganador)}</strong> (5º finalista).`);
+
+      const restantes = candidatos.filter(id=>id!==ganador);
+      setCarryNominees(restantes);
+      pushLog(`➡️ A <strong>Gala 11</strong>: el público decide el 6º finalista entre ${restantes.map(nameOf).join(" y ")}.`);
+
+      setSummaries(s=>({
+        ...s,
+        [gala]: { ...(s[gala]||{gala}), g10:{ ...(s[gala]?.g10||{}), quinto:ganador, restantes } }
+      }));
+
+      setStage("galaCerrada");
+    }
+
+
 
   // Gala 11
   function gala11Publico(){
