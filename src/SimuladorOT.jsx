@@ -709,18 +709,80 @@ export default function SimuladorOT(){
 
   // Gala 10
   function gala10PuntuarJueces(){
-    const vivos=contestants.filter(c=>c.status==="active"); if(vivos.length!==7){ pushLog("⚠️ Para la Gala 10 deben quedar exactamente 7 activos."); return; }
-    const scores={}, sumas={}; vivos.forEach(c=>{ const notas=[randomHalfStep(),randomHalfStep(),randomHalfStep(),randomHalfStep()]; scores[c.id]=notas; sumas[c.id]=+(notas.reduce((a,b)=>a+b,0)).toFixed(2); }); const orden=[...vivos].sort((a,b)=>sumas[b.id]-sumas[a.id]); const top3=orden.slice(0,3), bottom4=orden.slice(3);
-    const th = `<tr><th>Concursante<\/th><th>Juez 1<\/th><th>Juez 2<\/th><th>Juez 3<\/th><th>Juez 4<\/th><th>Total<\/th><\/tr>`;
-    const rows = orden.map(c=>{ const n = scores[c.id]; return `<tr><td>${c.name}<\/td><td>${n[0].toFixed(1)}<\/td><td>${n[1].toFixed(1)}<\/td><td>${n[2].toFixed(1)}<\/td><td>${n[3].toFixed(1)}<\/td><td><strong>${sumas[c.id].toFixed(2)}<\/strong><\/td><\/tr>`; }).join("");
-    pushLog(`📋 Desglose jurado (G10):<div style=\"overflow:auto;\"><table style=\"border-collapse:collapse;\"><thead>${th}<\/thead><tbody>${rows}<\/tbody><\/table><\/div>`);
-    setContestants(prev=> prev.map(c=> top3.some(t=>t.id===c.id)?{...c,status:"finalista",history:[...c.history,{gala,evento:"Finalista por jurado (G10)"}]}: c ));
-    pushLog(`📊 <strong>Gala 10</strong> – Sumas del jurado: ${orden.map((x,i)=>`${i+1}. ${x.name} (${sumas[x.id].toFixed(2)})`).join(" · ")}.`);
-    pushLog(`👑 Finalistas por jurado (G10): ${top3.map(t=>t.name).join(", ")}. Nominados (4): ${bottom4.map(t=>t.name).join(", ")}.`);
-    setGstate({...gstate, g10_scores:scores, g10_sumas:sumas, nominados:bottom4.map(b=>b.id)});
-    setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), g10:{ sumas, top3:top3.map(t=>t.id), nominados4:bottom4.map(t=>t.id), cuarto:"", quinto:"", restantes:[] } }}));
-    setStage("gala10_profes");
-  }
+      // Activos deben ser 7
+      const vivos = contestants.filter(c => c.status === "active");
+      if (vivos.length !== 7) { pushLog("⚠️ Para la Gala 10 deben quedar exactamente 7 activos."); return; }
+
+      // ---- 1) Contar nominaciones por concursante en Galas 1–9
+      const countNominaciones = (id) => {
+        let n = 0;
+        for (let g = 1; g <= 9; g++) {
+          const s = summaries[g];
+          if (!s) continue;
+          if ((s.juradoNominados || []).includes(id)) n++;
+        }
+        return n;
+      };
+
+      const nomCounts = Object.fromEntries(vivos.map(c => [c.id, countNominaciones(c.id)]));
+      const maxNoms   = Math.max(0, ...Object.values(nomCounts)); // 0 si todos 0
+
+      // helper para redondear a medios puntos
+      const toHalf = (x) => Math.round(x * 2) / 2;
+
+      // ---- 2) Puntuar con sesgo positivo a quien tenga menos nominaciones
+      //       bonus por juez = biasMax * favor * (0.75..1.25)
+      //       donde favor = (maxNoms - nomCount) / maxNoms   (si maxNoms=0, favor=0)
+      const biasMax = 0.8; // máximo ~0.8 puntos de bonus por juez
+
+      const scores = {};  // id -> [n1,n2,n3,n4]
+      const sumas  = {};  // id -> suma
+
+      vivos.forEach(c => {
+        const nomC   = nomCounts[c.id] || 0;
+        const favor  = maxNoms > 0 ? (maxNoms - nomC) / maxNoms : 0; // si todos 0, sin sesgo
+        const notas  = [0,0,0,0].map(() => {
+          const base  = randomHalfStep(5,10); // 5.0–10.0
+          const jitter= 0.75 + Math.random()*0.5; // 0.75..1.25
+          const bump  = biasMax * favor * jitter;
+          const val   = clamp(toHalf(base + bump), 5, 10);
+          return val;
+        });
+        const total = +(notas.reduce((a,b)=>a+b,0)).toFixed(2);
+        scores[c.id] = notas;
+        sumas[c.id]  = total;
+      });
+
+      // ---- 3) Ordenar, logs y estados como antes
+      const orden  = [...vivos].sort((a,b)=> sumas[b.id] - sumas[a.id]);
+      const top3   = orden.slice(0,3);
+      const bottom4= orden.slice(3);
+
+      const th = `<tr><th>Concursante</th><th>Juez 1</th><th>Juez 2</th><th>Juez 3</th><th>Juez 4</th><th>Total</th></tr>`;
+      const rows = orden.map(c=>{
+        const n = scores[c.id];
+        return `<tr><td>${c.name}</td><td>${n[0].toFixed(1)}</td><td>${n[1].toFixed(1)}</td><td>${n[2].toFixed(1)}</td><td>${n[3].toFixed(1)}</td><td><strong>${sumas[c.id].toFixed(2)}</strong></td></tr>`;
+      }).join("");
+
+      pushLog(`📋 Desglose jurado (G10):<div style="overflow:auto;"><table style="border-collapse:collapse;"><thead>${th}</thead><tbody>${rows}</tbody></table></div>`);
+      setContestants(prev => prev.map(c => 
+        top3.some(t=>t.id===c.id)
+          ? { ...c, status:"finalista", history:[...c.history,{gala,evento:"Finalista por jurado (G10)"}] }
+          : c
+      ));
+      pushLog(`📊 <strong>Gala 10</strong> – Sumas del jurado: ${orden.map((x,i)=>`${i+1}. ${x.name} (${sumas[x.id].toFixed(2)})`).join(" · ")}.`);
+      pushLog(`👑 Finalistas por jurado (G10): ${top3.map(t=>t.name).join(", ")}. Nominados (4): ${bottom4.map(t=>t.name).join(", ")}.`);
+
+      setGstate({ ...gstate, g10_scores:scores, g10_sumas:sumas, nominados:bottom4.map(b=>b.id) });
+      setSummaries(s => ({
+        ...s,
+        [gala]: { ...(s[gala]||{gala}),
+          g10:{ sumas, top3:top3.map(t=>t.id), nominados4:bottom4.map(t=>t.id), cuarto:"", quinto:"", restantes:[] }
+        }
+      }));
+      setStage("gala10_profes");
+    }
+
   function gala10Profes(){ if(!gstate || !gstate.nominados || gstate.nominados.length!==4) return; const salvado=pickRandom(gstate.nominados,1)[0]; setContestants(prev=>prev.map(c=>c.id===salvado?{...c,status:"finalista",history:[...c.history,{gala,evento:"4º finalista (profes, G10)"}]}:c)); pushLog(`🎓 Profesores eligen 4º finalista (G10): <strong>${nameOf(salvado)}</strong>.`); const restantes=gstate.nominados.filter(id=>id!==salvado); setGstate({...gstate, nominados:restantes, profesorSalvoId:salvado}); setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), g10:{ ...(s[gala]?.g10||{}), cuarto:salvado, restantes } }})); setStage("gala10_compas"); }
   
   function gala10Compas(){
