@@ -1049,9 +1049,13 @@ export default function SimuladorOT(){
                       </ul>
                     )}
                   </div>
-                  {testResults.length>0 && (
-                    <div className="text-xs text-muted-foreground">Tests: {testResults.join(" · ")}</div>
-                  )}
+                  {/* Ocultamos resultados de test (siguen ejecutándose internamente) */}
+                    {false && testResults.length>0 && (
+                      <div className="text-xs text-muted-foreground">
+                        Tests: {testResults.join(" · ")}
+                      </div>
+                    )}
+
                 </TabsContent>
               </Tabs>
             </CardContent>
