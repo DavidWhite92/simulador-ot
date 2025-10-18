@@ -2381,8 +2381,41 @@ function RecorridoTable({ contestants, summaries }){
 
     for(let g=1; g<=15; g++){
       let text="—", style=cellStyle("#eee","#555");
-      if (elimGala !== null && g > elimGala) { cells.push({ text: "—", style: cellStyle("#ccc", "#666") }); continue; }
-      if (elimGala !== null && g === elimGala) { const gnd = getGender(c.id); cells.push({ text: lbl.eliminado(gnd), style: cellStyle("red", "#fff") }); continue; }
+       if (elimGala !== null && g > elimGala) {
+         cells.push({ text: "—", style: cellStyle("#ccc", "#666") });
+         continue;
+       }
+          if (elimGala !== null && g === elimGala) {
+      // 🟤 EXCEPCIÓN: en G12–G14 mostramos "6º/5º/4º Finalista" (o 6ª/5ª/4ª)
+      if (g >= 12 && g <= 14) {
+        const s   = summaries[g];
+        const d   = s?.g12_14?.duel;
+        const gnd = getGender(c.id);
+        if (d) {
+          const num     = g === 12 ? 6 : g === 13 ? 5 : 4;
+
+          // 👇 aquí van las líneas que te interesan:
+          const loserId = d.winner === d.low ? d.high : d.low;
+          const sufNum  = gnd === "m" ? "º" : gnd === "f" ? "ª" : "";
+          const puesto  = `${num}${sufNum} Finalista`;
+
+          if (c.id === loserId) {
+            cells.push({ text: puesto, style: cellStyle("sienna", "#fff") });
+            continue;
+          }
+          if (c.id === d.low || c.id === d.high) {
+            cells.push({ text: "Duelo", style: cellStyle("orange", "#111") });
+            continue;
+          }
+        }
+      }
+
+      // 🔹 Si no es un caso especial, usa el texto habitual de eliminado
+      const gnd = getGender(c.id);
+      cells.push({ text: lbl.eliminado(gnd), style: cellStyle("red", "#fff") });
+      continue;
+    }
+
       const s=summaries[g]; if(!s){ cells.push({text,style}); continue; }
 
       if (g <= 9) {
@@ -2489,24 +2522,33 @@ function RecorridoTable({ contestants, summaries }){
         }
       }
 
-      else if (g >= 12 && g <= 14) {
-        const gX = s.g12_14;
-        if (gX) {
-          const d   = gX.duel;            // { low, high, pctWin, pctLose, winner }
-          const gnd = getGender(c.id);    // "m" | "f" | "e"
+    else if (g >= 12 && g <= 14) {
+      const gX = s.g12_14;
+      if (gX) {
+        const d   = gX.duel;
+        const gnd = getGender(c.id);
 
-          if (c.id === d.low && d.winner !== c.id) {
-            text  = lbl.eliminado(gnd);   // Eliminado/Eliminada/Eliminade
-            style = cellStyle("red", "#fff");
-          } else if (c.id === d.low || c.id === d.high) {
-            text  = "Duelo";
-            style = cellStyle("orange", "#111");
-          } else {
-            text  = lbl.salvado(gnd);     // Salvado/Salvada/Salvade
-            style = cellStyle("#fff", "#111");
-          }
+        const num     = g === 12 ? 6 : g === 13 ? 5 : 4;
+        const sufNum  = gnd === "m" ? "º" : gnd === "f" ? "ª" : "";
+        const puesto  = `${num}${sufNum} Finalista`;
+
+        // 👇 aquí también usa la misma lógica:
+        const loserId = d.winner === d.low ? d.high : d.low;
+
+        if (c.id === loserId) {
+          text  = puesto;
+          style = cellStyle("sienna", "#fff");
+        } else if (c.id === d.low || c.id === d.high) {
+          text  = "Duelo";
+          style = cellStyle("orange", "#111");
+        } else {
+          text  = lbl.salvado(gnd);
+          style = cellStyle("#fff", "#111");
         }
       }
+    }
+
+
 
       else if (g === 15) {
         const gX = s.g15;
