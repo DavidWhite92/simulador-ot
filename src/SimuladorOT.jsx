@@ -39,6 +39,95 @@ function fmtPct(n){
   return `${n.toFixed(1)}%`;
 }
 
+// === CANCIONES ===============================================================
+// const [songs, setSongs] = useState([]);
+
+function parseSongsText(txt) {
+  return txt
+    .split(/\r?\n/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(s => {
+      // quita comillas / «» externas si las hubiera
+      return s.replace(/^["“”«»]+|["“”«»]+$/g, "").trim();
+    });
+}
+
+// === UTILIDADES CANCIONES ====================================================
+const normSong = s =>
+  (s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").trim();
+
+// Canciones usadas globalmente hasta ANTES de la gala g (0..g-1)
+function getUsedSongsUpTo(summaries, g) {
+  const used = new Set();
+  for (let k = 0; k < g; k++) {
+    const rep = summaries?.[k]?.[k]?.reparto || [];
+    rep.forEach(r => { if (r.song) used.add(normSong(r.song)); });
+  }
+  return used;
+}
+
+// Canciones SOLISTAS de un concursante entre [fromG, toG]
+function getSoloSongsForIdInRange(summaries, id, fromG = 4, toG = Infinity) {
+  const out = [];
+  for (let g = fromG; g <= toG; g++) {
+    const rep = summaries?.[g]?.[g]?.reparto || [];
+    rep.forEach(r => {
+      if (r.type === "solo" && r.members?.[0] === id && r.song) out.push(r.song);
+    });
+  }
+  return out;
+}
+
+// Asigna canciones cumpliendo todas las reglas (incluida la Final G15)
+function buildRepartoConCanciones({ galaNum, reparto, summaries, allSongs }) {
+  const usedBefore = getUsedSongsUpTo(summaries, galaNum);
+  const usedThisGala = new Set();
+  const poolBase = allSongs.filter(s => !usedBefore.has(normSong(s)));
+  const seenCount = new Map();
+
+  const pickFresh = () => {
+    let candidates = (poolBase.length ? poolBase : allSongs).filter(
+      s => !usedThisGala.has(normSong(s))
+    );
+    if (!candidates.length) {
+      candidates = allSongs.filter(s => !usedThisGala.has(normSong(s)));
+    }
+    const s = candidates[Math.floor(Math.random() * candidates.length)];
+    usedThisGala.add(normSong(s));
+    return s;
+  };
+
+  const pickFromPastSolos = (id) => {
+    const prevSolos = getSoloSongsForIdInRange(summaries, id, 4, galaNum - 1);
+    const candidates = prevSolos.filter(
+      s => !usedBefore.has(normSong(s)) && !usedThisGala.has(normSong(s))
+    );
+    if (!candidates.length) return null;
+    const s = candidates[Math.floor(Math.random() * candidates.length)];
+    usedThisGala.add(normSong(s));
+    return s;
+  };
+
+  return reparto.map(row => {
+    const copy = { ...row };
+    if (copy.type === "solo") {
+      const id = copy.members[0];
+      seenCount.set(id, (seenCount.get(id) || 0) + 1);
+
+      if (galaNum === 15 && seenCount.get(id) === 2) {
+        copy.song = pickFromPastSolos(id) || pickFresh();
+      } else {
+        copy.song = pickFresh();
+      }
+    } else {
+      // dúos/tríos: una canción única por fila
+      copy.song = pickFresh();
+    }
+    return copy;
+  });
+}
+
 
 // === REPARTO DE TEMAS =======================================================
 
@@ -459,17 +548,41 @@ function runSelfTests(){
   return results;
 }
 
-export default function SimuladorOT(){
-  const [namesInput, setNamesInput] = useState(Array.from({length:18},(_,i)=>`Concursante ${i+1}`).join("\n"));
+export default function SimuladorOT() {
+  const [namesInput, setNamesInput] = useState(
+    Array.from({ length: 18 }, (_, i) => `Concursante ${i + 1}`).join("\n")
+  );
   const [contestants, setContestants] = useState([]);
   const [gala, setGala] = useState(1);
-  const [galaLogs, setGalaLogs] = useState({});
   const [viewGala, setViewGala] = useState(1);
+  const [galaLogs, setGalaLogs] = useState({});
   const [carryNominees, setCarryNominees] = useState([]);
   const [stage, setStage] = useState("inicio");
   const [gstate, setGstate] = useState({});
   const [summaries, setSummaries] = useState({});
   const [testResults, setTestResults] = useState([]);
+
+  // 🆕 Nuevo estado para las canciones
+  const [songs, setSongs] = useState([]);
+  const [songsReady, setSongsReady] = useState(false);
+
+    useEffect(() => {
+      const url = "canciones.txt"; // relativo a /public
+      fetch(url)
+        .then(r => r.text())
+        .then(t => {
+          const lines = t.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+          setSongs(lines);
+          setSongsReady(true);
+          console.log("[Canciones] cargadas:", lines.length);
+        })
+        .catch(err => {
+          console.warn("No pude cargar canciones.txt", err);
+          setSongs([]);
+          setSongsReady(true);
+        });
+    }, []);
+
 
   useEffect(()=>{ setTestResults(runSelfTests()); },[]);
 
@@ -510,7 +623,13 @@ export default function SimuladorOT(){
 
         const activosIds = vivos.map(c => c.id);
         const nominadosDuelo = (num >= 2 ? [...carryNominees] : []);
-        const reparto = buildRepartoParaGala(num, activosIds, nominadosDuelo);
+        const repartoBase = buildRepartoParaGala(num, activosIds, nominadosDuelo);
+        const reparto = buildRepartoConCanciones({
+            galaNum: num,
+            reparto: repartoBase,
+            summaries,
+            allSongs: songs,
+          });
       // ✅ Guardado de la nueva gala: arrastra solo duelSaved de la anterior
       setSummaries(s => {
         const prev = s[num - 1];                      // gala anterior
@@ -683,27 +802,47 @@ export default function SimuladorOT(){
       }
     };
 
-      function g0_setup(list) {
-        const vivos = list.map(c => c.id);
-        const order = shuffle(vivos);
+    function g0_setup(list) {
+      // (opcional) si quieres asegurar que hay canciones cargadas
+      if (!songsReady) { setStage("cargandoCanciones"); return; }
+      if (!songs.length) { alert("No se han cargado canciones. Revisa /public/canciones.txt"); return; }
 
-        // ⬇️ PRIMERO: guardar reparto de la Gala 0 (todos solos)
-        const reparto0 = buildRepartoParaGala(0, list.map(c=>c.id), []);
-        setSummaries(s => ({
-          ...s,
-          0: { ...(s[0] || { gala: 0 }), 0: { ...(s[0]?.[0] || {}), reparto: reparto0 } }
-        }));
+      const order = shuffle(list.map(c => c.id));
 
-        // estado
-        setGstate(st => ({
-          ...(st || {}),
-          g0: { order, idx: 0, entered: new Set(), doubt: new Set() }
-        }));
+      // 1) Reparto base (solos) y asignación de canciones
+      const reparto0base = buildRepartoParaGala(0, list.map(c => c.id), []);
+      const reparto0 = buildRepartoConCanciones({
+        galaNum: 0,
+        reparto: reparto0base,
+        summaries,
+        allSongs: songs,
+      });
 
-        // logs y etapa
-        pushLog("🎬 Comienza la Gala 0: el jurado decide quién entra y quién queda en duda.", 0);
-        setStage("g0_eval"); // ← ya existía, pero ahora va después del reparto
-      }
+      // 2) Guardar reparto con canciones en summaries[0][0]
+      setSummaries(s => ({
+        ...s,
+        0: {
+          ...(s[0] || { gala: 0 }),
+          0: { ...(s[0]?.[0] || {}), reparto: reparto0 },
+        },
+      }));
+
+      // 3) Inicializar estado de la Gala 0 (¡esto es lo que te faltaba!)
+      setGstate(prev => ({
+        ...(prev || {}),
+        g0: { order, idx: 0, entered: new Set(), doubt: new Set() },
+      }));
+
+      // 4) Vista y etapa
+      setViewGala(0);
+      setGalaLogs(p => ({ ...p, 0: p[0] || [] }));
+      setStage("g0_eval");
+
+      // (opcional) log
+      pushLog("🎬 Comienza la Gala 0: el jurado decide quién entra y quién queda en duda.", 0);
+    }
+
+
 
 
 
@@ -853,7 +992,13 @@ export default function SimuladorOT(){
         const activosIds = activos.map(c => c.id);
 
         // ✅ Generar y GUARDAR el reparto de G1 (duetos)
-        const reparto1 = buildRepartoParaGala(1, activosIds, []); // en G1 no hay nominados aún
+         const reparto1base = buildRepartoParaGala(1, activosIds, []);
+         const reparto1 = buildRepartoConCanciones({
+           galaNum: 1,
+           reparto: reparto1base,
+           summaries,
+           allSongs: songs,
+         });
         setSummaries(s => ({
           ...s,
           1: { ...(s[1] || { gala: 1 }), 1: { ...(s[1]?.[1] || {}), reparto: reparto1 } }
