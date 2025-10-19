@@ -1071,7 +1071,7 @@ export default function SimuladorOT() {
         return c;
       }));
 
-      pushLog(`🗳️ Resultado nominados: ${nameOf(a)} ${fmtPct(pctA)} · ${nameOf(b)} ${fmtPct(pctB)} — se salva <strong>${nameOf(winner)}</strong>.`);
+      pushLog(`🗳️ <strong>${nameOf(winner)}</strong>. ${nameOf(loser)} es eliminado/a.`);
 
       // Guardado de duel + “salvado por público” en summaries (igual que hacías)
       setSummaries(s => ({
@@ -1968,7 +1968,7 @@ export default function SimuladorOT() {
         c.id===loser  ? { ...c, status:"eliminado", history:[...c.history,{gala,evento:"Eliminado (G11)"}] } : c
       ));
 
-      pushLog(`🏆 Resultado público (G11): ${nameOf(a)} ${fmtPct(pctA)} · ${nameOf(b)} ${fmtPct(pctB)} → Se salva <strong>${nameOf(winner)}</strong>.`);
+      pushLog(`🗳️ <strong>${nameOf(winner)}</strong>. ${nameOf(loser)} es eliminado/a.`);
       const seis = contestants.filter(c=> (c.id===winner?true:c.status==="finalista")).map(c=>c.name);
       pushLog(`✅ Finalistas anunciados: ${seis.join(", ")}.`);
 
