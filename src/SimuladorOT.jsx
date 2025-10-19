@@ -842,10 +842,6 @@ export default function SimuladorOT() {
       pushLog("🎬 Comienza la Gala 0: el jurado decide quién entra y quién queda en duda.", 0);
     }
 
-
-
-
-
     function g0_revealNext() {
       const st = gstate?.g0;
       if (!st) { pushLog("⚠️ Prepara primero la Gala 0.", 0); return; }
@@ -1023,6 +1019,124 @@ export default function SimuladorOT() {
 
    const goNext = ()=>{ const next=gala+1; setGala(next); prepararNuevaGala(next); };
 
+
+    function iniciarDueloCiego() {
+      if (carryNominees.length !== 2) { setStage(nextStageFor(gala)); return; }
+      const [a, b] = carryNominees;
+
+      const { high, low } = randomDuelPercents();
+      const giveToA = Math.random() < 0.5;
+      const pctA = giveToA ? high : low;
+      const pctB = giveToA ? low  : high;
+
+      // Guardamos el paquete del duelo en gstate
+      setGstate(st => ({
+        ...st,
+        duelStep: {
+          a, b, pctA, pctB,
+          winner: pctA > pctB ? a : b,
+          loser:  pctA > pctB ? b : a
+        }
+      }));
+
+      // Paso 1: porcentajes ciegos
+      pushLog(`📊 Porcentajes ciegos (duelo): ${fmtPct(pctA)} · ${fmtPct(pctB)}.`);
+      setStage("duelo_ciegos");
+    }
+
+    function dueloMostrarFrase() {
+      const pkg = gstate?.duelStep;
+      if (!pkg) { pushLog("⚠️ Primero muestra los porcentajes ciegos."); return; }
+      const savedPct = Math.max(pkg.pctA, pkg.pctB);
+
+      // Paso 2: frase del presentador (con el % del salvado)
+      pushLog(`🗣️ <em>La audiencia ha decidido qué debe proseguir su formación en la academia con un (${savedPct.toFixed(1)}%)…</em>`);
+      setStage("duelo_revelar");
+    }
+
+    function dueloRevelar() {
+      const pkg = gstate?.duelStep;
+      if (!pkg) { pushLog("⚠️ No hay duelo preparado."); return; }
+      const { a, b, pctA, pctB, winner, loser } = pkg;
+
+      // Paso 3: revelación y efectos (idéntico a tu flujo actual)
+      setContestants(prev => prev.map(c => {
+        if (c.id === loser) {
+          return {
+            ...c,
+            status: "eliminado",
+            history: [...(c.history || []), { gala, evento: "Eliminado", detalle: `${fmtPct(c.id===a?pctA:pctB)} vs ${fmtPct(c.id===b?pctB:pctA)}` }]
+          };
+        }
+        return c;
+      }));
+
+      pushLog(`🗳️ Resultado nominados: ${nameOf(a)} ${fmtPct(pctA)} · ${nameOf(b)} ${fmtPct(pctB)} — se salva <strong>${nameOf(winner)}</strong>.`);
+
+      // Guardado de duel + “salvado por público” en summaries (igual que hacías)
+      setSummaries(s => ({
+        ...s,
+        [gala]: {
+          ...(s[gala] || { gala }),
+          duel: { a, b, pctA, pctB, winner },
+          duelSaved: { ...(s[gala]?.duelSaved || {}), [winner]: (winner === a ? pctA : pctB) }
+        }
+      }));
+
+      // Etiquetado del reparto (idéntico a tu post-proceso actual)
+      setSummaries(s => {
+        if (!s[gala] || !s[gala][gala] || !s[gala][gala].reparto) return s;
+        const jurNoms = new Set(s[gala]?.juradoNominados || []);
+        const pctMap  = { [a]: pctA, [b]: pctB };
+
+        const sufOf = (id) => {
+          const g = contestants.find(x => x.id === id)?.gender ?? "e";
+          return g === "m" ? "o" : g === "f" ? "a" : "e";
+        };
+
+        const rep = s[gala][gala].reparto.map(row => {
+          const labels = row.members.map((id) => {
+            if (!id) return "";
+
+            if (id === loser) {
+              const pct = pctMap[id];
+              return `Expulsad${sufOf(id)} por el público (${typeof pct === "number" ? pct.toFixed(2) : "?"}%)`;
+            }
+
+            if (id === winner) {
+              const pct = pctMap[id];
+              const baseJurado = jurNoms.has(id)
+                ? `Propuest${sufOf(id)} por el jurado`
+                : `Salvad${sufOf(id)} por el jurado`;
+              return `Salvad${sufOf(id)} por el público (${typeof pct === "number" ? pct.toFixed(2) : "?"}%) > ${baseJurado}`;
+            }
+
+            return "";
+          });
+
+          const nonEmpty = labels.filter(Boolean);
+          if (!nonEmpty.length) return row;
+
+          const uniq = [...new Set(nonEmpty)];
+          const valor = (uniq.length === 1)
+            ? uniq[0]
+            : labels.map((v,i)=> (v?`(${i+1}) ${v}`:"")).filter(Boolean).join(" · ");
+
+          return { ...row, valor };
+        });
+
+        return {
+          ...s,
+          [gala]: { ...(s[gala] || { gala }), [gala]: { ...(s[gala]?.[gala] || {}), reparto: rep } }
+        };
+      });
+
+      setCarryNominees([]);
+      setGstate(st => ({ ...st, duelStep: undefined }));
+      setStage(nextStageFor(gala));
+    }
+
+
   // Galas 1–9
     function resolverDueloPendiente(){
       if (carryNominees.length !== 2) { setStage(nextStageFor(gala)); return; }
@@ -1114,84 +1228,116 @@ export default function SimuladorOT() {
 
 
 
-  function iniciarVotoPublico(){
-      // Evita duplicados
+    function iniciarVotoPublico(){
       if (!gstate || gstate.top3Shown) return;
 
-      // Solo cuentan los activos
       const vivos = contestants.filter(c => c.status === "active");
       if (!vivos.length) return;
 
-      // 🚫 BAN: nunca permitir en el Top-3 al ganador del duelo de ESTA gala (G≥2)
-      // además de cualquier ban previo que tengas en gstate.top3Ban
+      // 🚫 Mantiene el veto al salvado del duelo de ESTA gala (ya estaba implementado)
       const winnerThisGala = summaries[gala]?.duel?.winner || null;
       const ban = new Set([
         ...(gstate?.top3Ban ? Array.from(gstate.top3Ban) : []),
         ...(winnerThisGala ? [winnerThisGala] : [])
       ]);
 
-      // Porcentajes aleatorios para todos los vivos
-      const rands = randomPercentages(vivos.length); // asume utilidad existente
+      const rands = randomPercentages(vivos.length);
       const ranked = vivos
         .map((c, i) => ({ id: c.id, pct: rands[i] }))
         .sort((a, b) => b.pct - a.pct);
 
-      // Top-3 excluyendo baneados
       const top3Rows = ranked.filter(r => !ban.has(r.id)).slice(0, 3);
       const top3Ids  = top3Rows.map(r => r.id);
       const top3Pct  = top3Rows.map(r => r.pct);
 
-      // Favorito = 1º del público (si hay)
       const favoritoId = top3Ids[0] ?? null;
 
-      // 📝 Log bonito (opcional)
-      if (top3Rows.length) {
-        const pretty = top3Rows
-          .map(r => `${nameOf(r.id)} ${fmtPct(r.pct)}`)
-          .join(" · ");
-        pushLog(`🏁 Top 3 del público: ${pretty}${winnerThisGala ? " (excluido el salvado del duelo)" : ""}`);
-      } else {
-        pushLog("🏁 Top 3 del público: (vacío)");
-      }
+      // 👇 NO logueamos porcentajes aquí para no spoilear
+      // Preparamos orden aleatorio para la primera revelación
+      const randomTop3Order = shuffle(top3Ids);
 
-      // ✅ Guarda en gstate (forma funcional para no pisar otros campos)
       setGstate(prev => ({
         ...prev,
         publicRank: ranked,
         top3: top3Ids,
         top3Pct,
-        favoritoId,
+        favoritoId,               // solo almacenado, aún no "revelado"
         top3Shown: true,
-        // conserva y extiende el ban interno
+        top3RandomOrder: randomTop3Order,
+        top3NamesRevealed: false, // 🆕 flag de fase 1
         top3Ban: new Set([...(prev.top3Ban || []), ...(winnerThisGala ? [winnerThisGala] : [])])
       }));
 
-      // ✅ Refleja favorito y % en summaries sin perder info previa de la gala
       setSummaries(s => ({
         ...s,
         [gala]: {
           ...(s[gala] || { gala }),
-          // conserva duelSaved u otros campos que ya existan
           duelSaved: s[gala]?.duelSaved,
           favoritoId,
           top3Pct,
-          top3Ids: top3Ids,             // 👈 GUARDA LOS IDs DEL TOP-3
+          top3Ids,
           [gala]: { ...(s[gala]?.[gala] || {}) }
         }
       }));
+
+      // Log neutro para guiar la UI
+      pushLog(`🧪 Top 3 preparado. Pulsa “Revelar 3 favoritos” para mostrarlos sin porcentajes.`);
     }
 
-  function revelarTop3YFavorito(){
-    if(!gstate || gstate.top3.length===0) return; if(gala>=10){ pushLog(`ℹ️ Desde la Gala 10 no hay favorito. Continua con la evaluación del jurado.`); setStage("juradoEvaluando"); return; }
-   
 
-    const top3 = gstate.top3.map(id=>gstate.publicRank.find(r=>r.id===id)).filter(Boolean).sort((a,b)=>b.pct-a.pct);
-    const favorito=top3[0]; const top3Pct=top3.map(t=>t.pct); const salvados=new Set(gstate.salvados); salvados.add(favorito.id);
-    pushLog(`🌟 <strong>Favorito/a</strong>: ${nameOf(favorito.id)}. Porcentajes Top3: ${top3.map(t=>`${nameOf(t.id)} ${fmtPct(t.pct)}`).join(" · ")}`);
-    setGstate({...gstate, favoritoId:favorito.id, salvados, top3Pct, finalTwoPlan:undefined});
-    setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), top3Pct, favoritoId:favorito.id }}));
-    setStage("juradoEvaluando");
-  }
+    function revelarTop3YFavorito(){
+      if (!gstate || gstate.top3.length === 0) return;
+      if (gala >= 10) {
+        pushLog(`ℹ️ Desde la Gala 10 no hay favorito. Continúa con la evaluación del jurado.`);
+        setStage("juradoEvaluando");
+        return;
+      }
+
+      // ——— FASE 1: solo nombres, orden aleatorio, sin % ———
+      if (!gstate.top3NamesRevealed) {
+        const orden = (gstate.top3RandomOrder?.length
+          ? gstate.top3RandomOrder
+          : shuffle(gstate.top3));
+        const lista = orden.map(nameOf).join(" · ");
+        pushLog(`🎖️ Los 3 favoritos (orden aleatorio): ${lista}`);
+        setGstate({ ...gstate, top3NamesRevealed: true });
+        // 👆 No fijamos favorit@ todavía, ni cambiamos de etapa
+        return;
+      }
+
+      // ——— FASE 2: revelación completa (como siempre) ———
+      const top3 = gstate.top3
+        .map(id => gstate.publicRank.find(r => r.id === id))
+        .filter(Boolean)
+        .sort((a, b) => b.pct - a.pct);
+
+      const favorito = top3[0];
+      const top3Pct  = top3.map(t => t.pct);
+
+      const salvados = new Set(gstate.salvados);
+      salvados.add(favorito.id);
+
+      pushLog(
+        `🌟 <strong>Favorito/a</strong>: ${nameOf(favorito.id)}. ` +
+        `Porcentajes Top3: ${top3.map(t => `${nameOf(t.id)} ${fmtPct(t.pct)}`).join(" · ")}`
+      );
+
+      setGstate({
+        ...gstate,
+        favoritoId: favorito.id,
+        salvados,
+        top3Pct,
+        finalTwoPlan: undefined
+      });
+
+      setSummaries(s => ({
+        ...s,
+        [gala]: { ...(s[gala] || { gala }), top3Pct, favoritoId: favorito.id }
+      }));
+
+      setStage("juradoEvaluando");
+    }
+
   function evaluarSiguientePorJurado(){
       if(!gstate) return;
 
@@ -1791,6 +1937,78 @@ export default function SimuladorOT() {
       setStage("galaCerrada");
     }
 
+    function g11_iniciarCiegos(){
+      if(carryNominees.length!==2){ pushLog("⚠️ En Gala 11 deben quedar 2 no-finalistas."); return; }
+      const [a,b]=carryNominees;
+      const { high, low } = randomDuelPercents();
+      const highForA = Math.random()<0.5;
+      const pctA = highForA?high:low;
+      const pctB = highForA?low:high;
+      const winner = pctA>pctB ? a : b;
+      const loser  = winner===a ? b : a;
+
+      setGstate(st=>({...st, g11:{ a,b,pctA,pctB,winner,loser, sentence:false, done:false }}));
+      pushLog(`📊 Porcentajes ciegos (G11): ${fmtPct(pctA)} · ${fmtPct(pctB)}.`);
+    }
+
+    function g11_mostrarFrase(){
+      const P = gstate?.g11; if(!P){ pushLog("⚠️ Primero muestra los porcentajes ciegos."); return; }
+      const savedPct = Math.max(P.pctA, P.pctB);
+      pushLog(`🗣️ <em>La audiencia ha decidido qué debe proseguir su formación en la academia con un (${savedPct.toFixed(1)}%)… y convertirse en el último/a finalista...</em>`);
+      setGstate(st=>({...st, g11:{ ...st.g11, sentence:true }}));
+    }
+
+    function g11_revelar(){
+      const P = gstate?.g11; if(!P){ pushLog("⚠️ No hay paquete preparado."); return; }
+      const { a,b,pctA,pctB,winner,loser } = P;
+
+      // Estado real
+      setContestants(prev=>prev.map(c=>
+        c.id===winner ? { ...c, status:"finalista", history:[...c.history,{gala,evento:"6º finalista (público, G11)"}] } :
+        c.id===loser  ? { ...c, status:"eliminado", history:[...c.history,{gala,evento:"Eliminado (G11)"}] } : c
+      ));
+
+      pushLog(`🏆 Resultado público (G11): ${nameOf(a)} ${fmtPct(pctA)} · ${nameOf(b)} ${fmtPct(pctB)} → Se salva <strong>${nameOf(winner)}</strong>.`);
+      const seis = contestants.filter(c=> (c.id===winner?true:c.status==="finalista")).map(c=>c.name);
+      pushLog(`✅ Finalistas anunciados: ${seis.join(", ")}.`);
+
+      // Persistencia + etiquetado de reparto (idéntico a tu flujo, solo movido aquí)
+      setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), g11:{ a,b,pctA,pctB,winner } }}));
+
+      setCarryNominees([]);
+      // Etiqueta “Valoración” de la gala 11 como ya hacías
+      setSummaries(s => {
+        if (!s[gala] || !s[gala][gala] || !s[gala][gala].reparto) return s;
+        const pctMap = { [a]: pctA, [b]: pctB };
+        const rep = s[gala][gala].reparto.map(row => {
+          const id = row.members[0]; // en G11 son solos
+          const c  = contestants.find(x => x.id === id);
+          if (!c) return row;
+          const g  = c.gender ?? "e";
+          const suf = g==="m"?"o":g==="f"?"a":"e";
+
+          // Ya-finalistas → "Finalista"
+          if (c.status === "finalista" && id !== winner) {
+            return { ...row, valor: "Finalista" };
+          }
+          // Ganador del duelo → "Salvado por el público (%) > Finalista"
+          if (id === winner) {
+            const pct = pctMap[id];
+            return { ...row, valor: `Salvad${suf} por el público (${pct.toFixed(2)}%) > Finalista` };
+          }
+          // Eliminado → "Expulsado por el público (%)"
+          if (id === loser) {
+            const pct = pctMap[id];
+            return { ...row, valor: `Expulsad${suf} por el público (${pct.toFixed(2)}%)` };
+          }
+          return row;
+        });
+        return { ...s, [gala]: { ...(s[gala] || { gala }), [gala]: { ...(s[gala]?.[gala] || {}), reparto: rep } } };
+      });
+
+      setGstate(st=>({...st, g11:{ ...st.g11, done:true }}));
+      setStage("galaCerrada");
+    }
 
 
   // Gala 11
@@ -1984,18 +2202,24 @@ export default function SimuladorOT() {
       const rep = s[gala][gala].reparto.map(row => {
         const id = row.members[0];
         const g  = contestants.find(x => x.id === id)?.gender ?? "e";
-        const suf = g==="m"?"o":g==="f"?"a":"e";
         const pct = pctMap[id];
 
+        // 🏆 Ganador/a/e (sin “Ganadoro”)
+        const ganadorTxt = g === "m" ? "Ganador" : g === "f" ? "Ganadora" : "Ganadore";
+
         if (id === ganadorId) {
-        return { ...row, valor: `Ganador${suf} (${pct.toFixed(2)}%)` };
-      }
-      if (id === segundoId) {
-        return { ...row, valor: `2${suf==="o"?"º":suf==="a"?"ª":"º/ª"} Finalista` };
-      }
-      if (id === terceroId) {
-        return { ...row, valor: `3${suf==="o"?"º":suf==="a"?"ª":"º/ª"} Finalista`  };
-      }
+          return { ...row, valor: `${ganadorTxt} (${pct.toFixed(2)}%)` };
+        }
+        if (id === segundoId) {
+          // 2º (m), 2ª (f), 2º/ª (no binario)
+          const ord2 = g === "m" ? "2º" : g === "f" ? "2ª" : "2º/ª";
+          return { ...row, valor: `${ord2} Finalista` };
+        }
+        if (id === terceroId) {
+          // ✅ 3er (m), 3ª (f), 3º/ª (no binario)
+          const ord3 = g === "m" ? "3er" : g === "f" ? "3ª" : "3º/ª";
+          return { ...row, valor: `${ord3} Finalista` };
+        }
 
         return row;
       });
@@ -2066,8 +2290,15 @@ export default function SimuladorOT() {
             <div className="flex flex-wrap gap-2">
               <div className="flex flex-wrap gap-2">
             {stage === "dueloPendiente" && (
-              <Button onClick={resolverDueloPendiente}>⚔️ Resolver duelo de nominados</Button>
+              <Button onClick={iniciarDueloCiego}>📊 Porcentajes ciegos (duelo)</Button>
             )}
+            {stage === "duelo_ciegos" && (
+              <Button onClick={dueloMostrarFrase}>🗣️ Mostrar frase del presentador</Button>
+            )}
+            {stage === "duelo_revelar" && (
+              <Button onClick={dueloRevelar}>⚔️ Revelar salvado y eliminado</Button>
+            )}
+
             {stage === "votoPublico" && (
               <Button onClick={iniciarVotoPublico} disabled={gstate?.top3Shown}>
                 🧪 Mostrar 3 más votados
@@ -2101,7 +2332,16 @@ export default function SimuladorOT() {
 
               {gala===10 && (
                 <div className="flex flex-wrap gap-2">
-                  {stage==="dueloPendiente" && (<Button onClick={resolverDueloPendiente}>⚖️ Resolver duelo de nominados (previo a G10)</Button>)}
+                      {/* 👇 Nuevo flujo en 3 pasos para el duelo previo a G10 */}
+                  {stage==="dueloPendiente" && (
+                    <Button onClick={iniciarDueloCiego}>📊 Porcentajes ciegos (previo a G10)</Button>
+                  )}
+                  {stage==="duelo_ciegos" && (
+                    <Button onClick={dueloMostrarFrase}>🗣️ Mostrar frase del presentador</Button>
+                  )}
+                  {stage==="duelo_revelar" && (
+                    <Button onClick={dueloRevelar}>⚔️ Revelar salvado y eliminado</Button>
+                  )}
                   {stage==="gala10_jueces" && (<Button onClick={gala10PuntuarJueces}>🧮 Puntuar jurado (G10)</Button>)}
                   {stage==="gala10_profes" && (<Button onClick={gala10Profes}>🎓 Profesores eligen 4º finalista</Button>)}
                   {stage==="gala10_compas" && (<Button onClick={gala10Compas}>🧑‍🤝‍🧑 Compañeros eligen 5º finalista</Button>)}
@@ -2111,7 +2351,16 @@ export default function SimuladorOT() {
 
               {gala===11 && (
                 <div className="flex flex-wrap gap-2">
-                  {stage==="gala11_publico" && (<Button onClick={gala11Publico}>🗳️ Revelar resultado del público (G11)</Button>)}
+                  {stage==="gala11_publico" && !gstate?.g11 && (
+                  <Button onClick={g11_iniciarCiegos}>📊 Porcentajes ciegos (G11)</Button>
+                )}
+                {stage==="gala11_publico" && gstate?.g11 && !gstate.g11.sentence && (
+                  <Button onClick={g11_mostrarFrase}>🗣️ Mostrar frase del presentador</Button>
+                )}
+                {stage==="gala11_publico" && gstate?.g11?.sentence && !gstate.g11.done && (
+                  <Button onClick={g11_revelar}>🏆 Revelar salvado (6.º finalista)</Button>
+                )}
+
                   {stage==="galaCerrada" && (<Button onClick={goNext}>⏭️ Cerrar gala y pasar a la siguiente</Button>)}
                 </div>
               )}
@@ -2381,40 +2630,19 @@ function RecorridoTable({ contestants, summaries }){
 
     for(let g=1; g<=15; g++){
       let text="—", style=cellStyle("#eee","#555");
-       if (elimGala !== null && g > elimGala) {
-         cells.push({ text: "—", style: cellStyle("#ccc", "#666") });
-         continue;
-       }
-          if (elimGala !== null && g === elimGala) {
-      // 🟤 EXCEPCIÓN: en G12–G14 mostramos "6º/5º/4º Finalista" (o 6ª/5ª/4ª)
-      if (g >= 12 && g <= 14) {
-        const s   = summaries[g];
-        const d   = s?.g12_14?.duel;
+      if (elimGala !== null && g > elimGala) { cells.push({ text: "—", style: cellStyle("#ccc", "#666") }); continue; }
+      if (elimGala !== null && g === elimGala) {
         const gnd = getGender(c.id);
-        if (d) {
-          const num     = g === 12 ? 6 : g === 13 ? 5 : 4;
-
-          // 👇 aquí van las líneas que te interesan:
-          const loserId = d.winner === d.low ? d.high : d.low;
-          const sufNum  = gnd === "m" ? "º" : gnd === "f" ? "ª" : "";
-          const puesto  = `${num}${sufNum} Finalista`;
-
-          if (c.id === loserId) {
-            cells.push({ text: puesto, style: cellStyle("sienna", "#fff") });
-            continue;
-          }
-          if (c.id === d.low || c.id === d.high) {
-            cells.push({ text: "Duelo", style: cellStyle("orange", "#111") });
-            continue;
-          }
+        if (g >= 12 && g <= 14) {
+          // 6º (G12) · 5º (G13) · 4º (G14) — “º” si es él, “ª” si es ella o elle
+          const n   = g === 12 ? "6" : g === 13 ? "5" : "4";
+          const suf = gnd === "m" ? "º" : "ª";
+          cells.push({ text: `${n}${suf} Finalista`, style: cellStyle("sienna", "#fff") });
+        } else {
+          cells.push({ text: lbl.eliminado(gnd), style: cellStyle("red", "#fff") });
         }
+        continue;
       }
-
-      // 🔹 Si no es un caso especial, usa el texto habitual de eliminado
-      const gnd = getGender(c.id);
-      cells.push({ text: lbl.eliminado(gnd), style: cellStyle("red", "#fff") });
-      continue;
-    }
 
       const s=summaries[g]; if(!s){ cells.push({text,style}); continue; }
 
@@ -2479,9 +2707,6 @@ function RecorridoTable({ contestants, summaries }){
         }
       }
 
-
-
-
       else if (g === 10) {
         const g10 = s.g10;
         if (g10?.sumas) {
@@ -2522,31 +2747,30 @@ function RecorridoTable({ contestants, summaries }){
         }
       }
 
-    else if (g >= 12 && g <= 14) {
-      const gX = s.g12_14;
-      if (gX) {
-        const d   = gX.duel;
-        const gnd = getGender(c.id);
+      else if (g >= 12 && g <= 14) {
+        const gX = s.g12_14;
+        if (gX) {
+          const d   = gX.duel;                         // { low, high, pctWin, pctLose, winner }
+          const gnd = getGender(c.id);                 // "m" | "f" | "e"
+          const loserId = d.winner === d.low ? d.high : d.low;
 
-        const num     = g === 12 ? 6 : g === 13 ? 5 : 4;
-        const sufNum  = gnd === "m" ? "º" : gnd === "f" ? "ª" : "";
-        const puesto  = `${num}${sufNum} Finalista`;
-
-        // 👇 aquí también usa la misma lógica:
-        const loserId = d.winner === d.low ? d.high : d.low;
-
-        if (c.id === loserId) {
-          text  = puesto;
-          style = cellStyle("sienna", "#fff");
-        } else if (c.id === d.low || c.id === d.high) {
-          text  = "Duelo";
-          style = cellStyle("orange", "#111");
-        } else {
-          text  = lbl.salvado(gnd);
-          style = cellStyle("#fff", "#111");
+          if (c.id === loserId) {
+            // 6º (G12) · 5º (G13) · 4º (G14) — “º” si es él, “ª” si es ella o elle
+            const n    = g === 12 ? "6" : g === 13 ? "5" : "4";
+            const suf  = gnd === "m" ? "º" : "ª";
+            text  = `${n}${suf} Finalista`;
+            style = cellStyle("sienna", "#fff");
+          } else if (c.id === d.low || c.id === d.high) {
+            // Estuvo en duelo pero se salvó
+            text  = "Duelo";
+            style = cellStyle("orange", "#111");
+          } else {
+            // Salvado/Salvada/Salvade
+            text  = lbl.salvado(gnd);
+            style = cellStyle("#fff", "#111");
+          }
         }
       }
-    }
 
 
 
