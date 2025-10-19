@@ -2234,7 +2234,11 @@ export default function SimuladorOT() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Simulador web de Operación Triunfo</h1>
+        <img
+          src="/LogoOT2005_Negro.png"
+          alt="Simulador Web de Operación Triunfo"
+          className="h-[7.75rem] w-auto" // ajusta tamaño según necesites
+        />
         <div className="flex gap-2">
           <div className="flex gap-2 mb-4">
               <Button onClick={reiniciar}>🔁 Reiniciar</Button>
