@@ -1318,7 +1318,7 @@ export default function SimuladorOT() {
       salvados.add(favorito.id);
 
       pushLog(
-        `🌟 <strong>Favorito/a</strong>: ${nameOf(favorito.id)}. ` +
+        `🌟 <strong>Favorito/a: ${nameOf(favorito.id)}</strong>. ` +
         `Porcentajes Top3: ${top3.map(t => `${nameOf(t.id)} ${fmtPct(t.pct)}`).join(" · ")}`
       );
 
