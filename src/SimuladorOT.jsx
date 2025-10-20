@@ -170,21 +170,13 @@ function buildRepartoConCanciones({ galaNum, reparto, summaries, allSongs }) {
       // El “resto” disponible para otras asignaciones
       let baseSet = activosIds.filter(id => !nomSet.has(id));
 
-      // ⭐️ GALA 14: 4 solos + 2 dúos entre los MISMOS 4 finalistas
+      // ⭐️ GALA 14: solo 4 solistas (sin dúos)
       if (galaNum === 14) {
-        // 1) Solos de todos los finalistas que quedan (deben ser 4)
+        // Solos de los 4 finalistas
         baseSet.forEach(id => filas.push({ type:'solo', members:[id], song:'', valor:'' }));
-
-        // 2) Dos dúos entre esos mismos 4 (barajamos y cogemos dos parejas)
-        const pool = shuffle(baseSet);
-        const duos = [];
-        while (pool.length >= 2 && duos.length < 2) {
-          duos.push([ pool.shift(), pool.shift() ]);
-        }
-        duos.forEach(m => filas.push({ type:'duo', members:m, song:'', valor:'' }));
-
         return filas;
       }
+
 
       // ⭐️ GALA 15: 3 solos + 3 solos (los mismos 3, segunda canción)
       if (galaNum === 15) {
@@ -1405,7 +1397,7 @@ export default function SimuladorOT() {
 
       // 3A) Barrera: si ya hay 3 nominados y quedan >2 por evaluar, este va salvado
       if (gstate.nominados.length >= 3 && remaining > 2) {
-        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → cruza la pasarela (salvado/a).`);
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → cruza la pasarela.`);
         const salvados = new Set(gstate.salvados); salvados.add(id);
         setGstate({
           ...gstate,
@@ -1513,7 +1505,7 @@ export default function SimuladorOT() {
           evaluacionOrden: gstate.evaluacionOrden.filter(x => x !== id)
         });
       } else {
-        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → cruza la pasarela (salvado/a).`);
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → cruza la pasarela.`);
         const salvados = new Set(gstate.salvados); salvados.add(id);
         setGstate({
           ...gstate,
@@ -2570,6 +2562,9 @@ function RecorridoTable({ contestants, summaries }){
   // --- Helpers de género (compactos y sin repeticiones) ---
   const sufLocal = g => (g==="m"?"o":g==="f"?"a":"e");               // sufijo por género
   const byGender = (g, forms) => (g==="f" ? forms.f : g==="e" ? forms.e : forms.m);
+  const normName = (s) =>
+    (s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
+
 
   // Ordinales según género: m → 2º / 3er ; f/e → 2ª / 3ª
   const ord2 = (g) => (g === "m" ? "2º"  : "2ª");
@@ -2596,18 +2591,31 @@ function RecorridoTable({ contestants, summaries }){
   const headers=["Concursante", "Gala 0", ...Array.from({length:15},(_,i)=> (i+1===15?"Gala Final":`Gala ${i+1}`))];
   const cellStyle=(bg,color="#000")=>({ background:bg, color, padding:"4px 6px", border:"1px solid #ddd", fontSize:12, textAlign:"center", whiteSpace:"nowrap" });
   const g15 = summaries[15]?.g15, winnerId=g15?.winner, thirdId=g15?.third, secondId=g15 ? [...g15.tabla].sort((a,b)=>b.pct-a.pct)[1]?.id : undefined;
-  const eliminatedOnly = contestants.filter(c => c.status === "eliminado").sort((a,b) => { const ga=a.history.find(h=>h.evento?.startsWith?.("Eliminado"))?.gala ?? 0; const gb=b.history.find(h=>h.evento?.startsWith?.("Eliminado"))?.gala ?? 0; return gb-ga; });
-  const aliveOnly = contestants.filter(c => c.status !== "eliminado");
+  const eliminatedOnly = contestants
+    .filter(c => c.status === "eliminado")
+    .sort((a,b) => {
+      const ga = a.history.find(h => h.evento?.startsWith?.("Eliminado"))?.gala ?? 0;
+      const gb = b.history.find(h => h.evento?.startsWith?.("Eliminado"))?.gala ?? 0;
+      return gb - ga; // 👈 se mantiene “como siempre”
+    });
+  const aliveOnly = contestants
+    .filter(c => c.status !== "eliminado")
+    .sort((a,b) => normName(a.name).localeCompare(normName(b.name)));
 
   let sorted;
   if (g15 && winnerId) {
     const topIds=[winnerId, secondId, thirdId].filter(Boolean);
     const topThree=aliveOnly.filter(c=>topIds.includes(c.id));
-    const aliveOthers=aliveOnly.filter(c=>!topIds.includes(c.id));
+    const aliveOthers=aliveOnly
+      .filter(c=>!topIds.includes(c.id))
+      .sort((a,b)=>normName(a.name).localeCompare(normName(b.name)));
     const order=new Map([[winnerId,0],[secondId,1],[thirdId,2]].filter(([k])=>k));
     topThree.sort((a,b)=>(order.get(a.id)??99)-(order.get(b.id)??99));
     sorted=[...topThree, ...aliveOthers, ...eliminatedOnly];
-  } else sorted=[...aliveOnly, ...eliminatedOnly];
+    } else {
+      // ya vienen alfabéticos
+      sorted=[...aliveOnly, ...eliminatedOnly];
+    }
 
   const rows = sorted.map(c=>{
     const cells=[{text:c.name, style:cellStyle("#fff","#111") }];
