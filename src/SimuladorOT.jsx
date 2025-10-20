@@ -367,7 +367,7 @@ function buildRepartoConCanciones({ galaNum, reparto, summaries, allSongs }) {
         }
 
         // top3 del jurado
-        return `${prefix}Finalista`;
+        return `${prefix}Salvad${sufG} por el jurado > Finalista`;
       }
 
       // 2) Si NO es finalista pero está entre los nominados que pasan a G11
@@ -839,7 +839,7 @@ export default function SimuladorOT() {
       setStage("g0_eval");
 
       // (opcional) log
-      pushLog("🎬 Comienza la Gala 0: el jurado decide quién entra y quién queda en duda.", 0);
+      pushLog("🎬 El jurado decide quién entra y quién queda en duda.", 0);
     }
 
     function g0_revealNext() {
@@ -2502,15 +2502,13 @@ export default function SimuladorOT() {
                         // Favorito del público: forzar etiqueta estándar y conservar porcentaje si vien
 
                         // (opcional, si quieres mantener la normalización de Gala 11)
-                        if (viewGala === 11 && /(finalista|favorit|nómada)/i.test(valor)) {
+                        // En G11, no normalizar si ya viene un "Salvad@ por el público (%) > Finalista"
+                        if (viewGala === 11 
+                            && /(finalista|favorit|nómada)/i.test(valor) 
+                            && !/salvad/i.test(valor)) {
                           displayValor = "Finalista";
                         }
 
-
-                        // En Gala 11 todo favorito/finalista se muestra como "Finalista"
-                        if (viewGala === 11 && /(finalista|favorit|nómada)/i.test(valor)) {
-                          displayValor = "Finalista";
-                        }
                         // 🔵 --- fin del bloque añadido ---
 
                         return (
