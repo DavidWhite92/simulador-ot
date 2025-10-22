@@ -486,60 +486,82 @@ const nuevoRep = temp.map(({ row, ids, vals }) => ({
 // Baraja valoraciones con reglas:
 //  - Nunca más de 2 nominados seguidos
 //  - El último nominado sale en penúltima o última posición
-function buildValoracionesOrder(allIds, nomineeIds){
-  const N = allIds.length;
-  const nomSet = new Set(nomineeIds);
-  const nom   = nomineeIds.slice();
-  const otros = allIds.filter(id => !nomSet.has(id));
+// Baraja valoraciones con reglas fuertes para los últimos puestos:
+// - Nunca más de 2 nominados seguidos
+// - En las 3 primeras, máx 1 nominado
+    // - Se reserva 1 NOMINADO para penúltima/última y 1 OTRO para el hueco complementario
+    function buildValoracionesOrder(allIds, nomineeIds){
+      const N = allIds.length;
+      const nomSet = new Set(nomineeIds);
+      const nom   = nomineeIds.slice();
+      const otros = allIds.filter(id => !nomSet.has(id));
 
-  const shuffleInPlace = arr => { for (let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; };
-  shuffleInPlace(nom); shuffleInPlace(otros);
+      // shuffle Fisher-Yates
+      for (let a of [nom, otros]) for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
 
-  // reservar 1 nominado para penúltima/última
-  let slotUlt = Math.random() < 0.5 ? N-1 : N-2;
-  if (nom.length === 0) slotUlt = N-1;
-  const reservado = nom.length ? nom.pop() : null;
+      // reservar 1 nominado para penúltima/última + 1 "otro" para el otro hueco
+      let slotUlt = Math.random() < 0.5 ? N-1 : N-2;
+      if (nom.length === 0) slotUlt = N-1;
+      const reservado      = nom.length ? nom.pop() : null;              // nominado
+      const slotOther      = slotUlt === N-1 ? N-2 : N-1;
+      const reservadoOtro  = (otros.length > 0) ? otros.pop() : null;    // salvado
 
-  const order = [];
-  let consecNom = 0;
-  let nomInFirst3 = 0;
+      const order = [];
+      let consecNom = 0;
+      let nomInFirst3 = 0;
 
-    for (let i = 0; i < N; i++) {
-      // coloca el reservado en penúltima/última
-      if (reservado && i === slotUlt) {
-        if (consecNom === 2 && otros.length) { order.push(otros.pop()); consecNom = 0; i++; }
-        order.push(reservado); consecNom++; if (i < 3) nomInFirst3++;
-        continue;
+      for (let i = 0; i < N; i++) {
+        // coloca el "otro" reservado en el hueco complementario
+        if (reservadoOtro && i === slotOther) {
+          order.push(reservadoOtro);
+          consecNom = 0;
+          continue;
+        }
+
+        // coloca el nominado reservado en penúltima/última (y evita 3 seguidos justo antes)
+        if (reservado && i === slotUlt) {
+          if (consecNom === 2 && otros.length) { order.push(otros.pop()); consecNom = 0; i++; }
+          order.push(reservado);
+          consecNom++;
+          if (i < 3) nomInFirst3++;
+          continue;
+        }
+
+        // reglas generales
+        const earlyCap   = (i < 3 && nomInFirst3 >= 1);                   // primeras 3: máx 1 nominado
+        const puedeNom   = nom.length > 0 && consecNom < 2 && !earlyCap;
+
+        // huecos restantes sin contar los reservados que aún no han salido
+        const reservedAhead = (reservado && i < slotUlt ? 1 : 0) + (reservadoOtro && i < slotOther ? 1 : 0);
+        const slotsRestantes = (N - i) - reservedAhead;
+
+        // balance: si los nominados restantes casi llenan los huecos no reservados, empuja un "otro" ahora
+        const debeEquilibrar = puedeNom && nom.length >= (slotsRestantes - 1);
+
+        // al entrar en los 3 últimos huecos, rompe rachas de 2 nominados
+        if (i >= N - 3 && consecNom === 2 && otros.length) {
+          order.push(otros.pop());
+          consecNom = 0;
+          continue;
+        }
+
+        // decisión
+        let pick = null;
+        if (!debeEquilibrar && (puedeNom && Math.random() < 0.5)) {
+          pick = nom.pop();
+          consecNom++;
+          if (i < 3) nomInFirst3++;
+        } else {
+          pick = otros.pop();
+          if (pick == null) { pick = nom.pop(); consecNom++; if (i < 3) nomInFirst3++; }
+          else { consecNom = 0; }
+        }
+        order.push(pick);
       }
 
-      // ——— REGLAS ———
-      const earlyCap = (i < 3 && nomInFirst3 >= 1);      // en las 3 primeras, máx 1 nominado
-      const puedeNom = nom.length > 0 && consecNom < 2 && !earlyCap;
-
-      // HUECOS que quedan excluyendo el reservado (si aún no ha llegado)
-      const slotsRestantes = (N - i) - (reservado && i < slotUlt ? 1 : 0);
-
-      // Si los nominados que quedan ocupan exactamente los huecos que quedan,
-      // hay que sacar uno ahora para no empujarlos todos al final.
-      const debeEquilibrar = puedeNom && nom.length === slotsRestantes;
-
-      // También forzamos nominado si ya no quedan "otros"
-      const debeNom = puedeNom && (debeEquilibrar || otros.length === 0);
-
-      let pick = null;
-      if (debeNom || (puedeNom && Math.random() < 0.5)) {
-        pick = nom.pop(); consecNom++; if (i < 3) nomInFirst3++;
-      } else {
-        pick = otros.pop();
-        if (pick == null) { pick = nom.pop(); consecNom++; if (i < 3) nomInFirst3++; }
-        else { consecNom = 0; }
-      }
-      order.push(pick);
+      return order;
     }
 
-
-  return order;
-}
 
 function detectGender(token){
   const t = norm(token.trim());
@@ -1518,13 +1540,13 @@ export default function SimuladorOT() {
       setStage("juradoEvaluando");
     }
 
-  function evaluarSiguientePorJurado(){
-      if(!gstate) return;
+    function evaluarSiguientePorJurado(){
+      if (!gstate) return;
 
-      // 1) Construir el orden al entrar por primera vez en el jurado (favorito inmune, resto nominable)
+      // 1) Construir orden al entrar al jurado
       if (!gstate.evaluacionOrden || gstate.evaluacionOrden.length === 0) {
-        const vivosIds  = contestants.filter(c => c.status === "active").map(c => c.id);
-        const favId     = gstate.favoritoId || null;
+        const vivosIds   = contestants.filter(c => c.status === "active").map(c => c.id);
+        const favId      = gstate.favoritoId || null;
         const nomineeIds = favId ? vivosIds.filter(id => id !== favId) : [...vivosIds];
 
         const ordenValoraciones = buildValoracionesOrder(vivosIds, nomineeIds);
@@ -1533,24 +1555,28 @@ export default function SimuladorOT() {
           ...st,
           evaluacionOrden: ordenValoraciones,
           currentEvaluadoIndex: 0,
-          currentEvaluadoId: null
+          currentEvaluadoId: null,
         }));
         setSummaries(s => ({
           ...s,
           [gala]: { ...(s[gala] || { gala }), ordenValoraciones }
         }));
-        return; // el siguiente click ya usa el orden creado
+        return;
       }
 
       const vivos = contestants.filter(c => c.status === "active").map(c => c.id);
       const writeAt = (idx, html) =>
-        setGalaLogs(prev => { const arr = [ ...(prev[gala] || []) ]; arr[idx] = html; return { ...prev, [gala]: arr }; });
+        setGalaLogs(prev => {
+          const arr = [ ...(prev[gala] || []) ];
+          arr[idx] = html;
+          return { ...prev, [gala]: arr };
+        });
 
-      // 2) Si no hay "actual evaluado", abrir ficha y placeholder
+      // 2) Abrir “ficha” si no hay evaluado actual
       if (!gstate.currentEvaluadoId) {
-        const pend = gstate.evaluacionOrden.filter(id => vivos.includes(id) && !gstate.salvados.has(id) && !gstate.nominados.includes(id));
+        const pend = gstate.evaluacionOrden
+          .filter(id => vivos.includes(id) && !gstate.salvados.has(id) && !gstate.nominados.includes(id));
 
-        // Si no queda nadie por evaluar: completar nominados hasta 4 y pasar de etapa
         if (!pend.length) {
           let nominados = [ ...gstate.nominados ];
           const rest = gstate.evaluacionOrden.filter(id => !gstate.salvados.has(id) && !nominados.includes(id));
@@ -1563,27 +1589,79 @@ export default function SimuladorOT() {
           return;
         }
 
-        // Hay alguien por evaluar → abre log “...” y guarda referencia
         const actualId = pend[0];
         const idx = (galaLogs[gala]?.length || 0);
-        setGalaLogs(prev => { const arr = [ ...(prev[gala] || []) ]; arr.push(`⚖️ Jurado evalúa a <strong>${nameOf(actualId)}</strong> → …`); return { ...prev, [gala]: arr }; });
+        setGalaLogs(prev => {
+          const arr = [ ...(prev[gala] || []) ];
+          arr.push(`⚖️ Jurado evalúa a <strong>${nameOf(actualId)}</strong> → …`);
+          return { ...prev, [gala]: arr };
+        });
         setGstate({ ...gstate, currentEvaluadoId: actualId, currentEvaluadoLogIndex: idx });
         return;
       }
 
-      // 3) Ya hay "actual evaluado": decidir acción y actualizar estado
+      // 3) Decidir acción sobre el evaluado actual
       const id = gstate.currentEvaluadoId;
       const logIdx = gstate.currentEvaluadoLogIndex ?? (galaLogs[gala]?.length || 1) - 1;
 
       // reconstruir pendientes (id primero)
-      let pend = gstate.evaluacionOrden.filter(x => vivos.includes(x) && !gstate.salvados.has(x) && !gstate.nominados.includes(x));
+      let pend = gstate.evaluacionOrden
+        .filter(x => vivos.includes(x) && !gstate.salvados.has(x) && !gstate.nominados.includes(x));
       if (pend[0] !== id) pend = [ id, ...pend.filter(x => x !== id) ];
 
       const remaining = pend.length;
       const needed = 4 - gstate.nominados.length;
       let plan = gstate.finalTwoPlan;
 
-      // 3A) Barrera: si ya hay 3 nominados y quedan >2 por evaluar, este va salvado
+      // —— Reglas específicas para GALA 9 ——
+      // (a) 3ª valoración y aún 0 nominados → forzar NOMINADO
+      const evIndex = gstate.evalResults.length; // 0,1,2... (2 == tercera)
+      if (gala === 9 && evIndex === 2 && gstate.nominados.length === 0) {
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINADO/A</strong>.`);
+        setGstate({
+          ...gstate,
+          currentEvaluadoId: undefined,
+          currentEvaluadoLogIndex: undefined,
+          nominados: [ ...gstate.nominados, id ],
+          evalResults: [ ...gstate.evalResults, { id, result: "nominado" } ],
+          evaluacionOrden: gstate.evaluacionOrden.filter(x => x !== id),
+          finalTwoPlan: undefined,
+        });
+        return;
+      }
+
+      // (b) Quedan 4 por evaluar y faltan ≥3 nominados → forzar NOMINADO ahora
+      if (gala === 9 && remaining === 4 && needed >= 3) {
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINADO/A</strong>.`);
+        setGstate({
+          ...gstate,
+          currentEvaluadoId: undefined,
+          currentEvaluadoLogIndex: undefined,
+          nominados: [ ...gstate.nominados, id ],
+          evalResults: [ ...gstate.evalResults, { id, result: "nominado" } ],
+          evaluacionOrden: gstate.evaluacionOrden.filter(x => x !== id),
+          finalTwoPlan: undefined,
+        });
+        return;
+      }
+      // —— Fin reglas G9 ——
+
+      // 3A-bis) Si quedan 3 y faltan ≥2 → nomina YA (evita pedir 2 en las dos últimas)
+      if (remaining === 3 && needed >= 2) {
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINADO/A</strong>.`);
+        setGstate({
+          ...gstate,
+          currentEvaluadoId: undefined,
+          currentEvaluadoLogIndex: undefined,
+          nominados: [ ...gstate.nominados, id ],
+          evalResults: [ ...gstate.evalResults, { id, result: "nominado" } ],
+          evaluacionOrden: gstate.evaluacionOrden.filter(x => x !== id),
+          finalTwoPlan: undefined,
+        });
+        return;
+      }
+
+      // 3A) Si ya hay 3 nominados y quedan >2 → este va salvado
       if (gstate.nominados.length >= 3 && remaining > 2) {
         writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → cruza la pasarela.`);
         const salvados = new Set(gstate.salvados); salvados.add(id);
@@ -1598,25 +1676,16 @@ export default function SimuladorOT() {
         return;
       }
 
-      // 3B) Plan especial para las dos últimas valoraciones
-      if (remaining === 2 && !plan) {
-        const last2 = gstate.evalResults.slice(-2).map(r => r.result);
-        if (needed >= 2) {
-          // necesitamos 2 nominados, pero evita 3–4 seguidos
-          plan = (last2[0] === "nominado" && last2[1] === "nominado")
-            ? ["salvado", "nominado"]
-            : ["nominado", "nominado"];
-        } else if (needed === 1) {
-          plan = Math.random() < 0.5 ? ["nominado", "salvado"] : ["salvado", "nominado"];
-        } else {
-          plan = ["salvado", "salvado"];
-        }
+      // 3B) DOS ÚLTIMAS: SIEMPRE 1 NOMINADO y 1 SALVADO (orden aleatorio)
+      if (remaining === 2) {
+        plan = (needed <= 0)
+          ? ["salvado", "salvado"]
+          : (Math.random() < 0.5 ? ["nominado", "salvado"] : ["salvado", "nominado"]);
+        setGstate({ ...gstate, finalTwoPlan: plan });
       }
 
-
-      // 3C) Decidir acción con sesgo de salvado al inicio y ventana deslizante
-      const evIndex = gstate.evalResults.length;                // cuántos ya evaluados (0 = primero, 1 = segundo, ...)
-      const last2   = gstate.evalResults.slice(-2).map(r => r.result);
+      // 3C) Decisión “normal” (con ventanas y performance)
+      const last2 = gstate.evalResults.slice(-2).map(r => r.result);
       let decision;
 
       if (remaining === needed) {
@@ -1626,111 +1695,57 @@ export default function SimuladorOT() {
         decision = plan[0];
       }
       else if (evIndex < 3 && gstate.nominados.length >= 1) {
-        // en las 3 primeras valoraciones, como mucho 1 nominado
-        decision = "salvado";
+        decision = "salvado"; // primeras 3: máx 1 nominado
       }
       else {
-        // ventana deslizante: si en las últimas 3 ya hubo 2 nominados, este va salvado
         const last3 = gstate.evalResults.slice(-3).map(r => r.result);
         const nomsInLast3 = last3.filter(x => x === "nominado").length;
         if (nomsInLast3 >= 2) {
           decision = "salvado";
         } else {
-        // público desactivado (PUBLIC_WEIGHT = 0)
-        const votePct = gstate.publicRank.find(r => r.id === id)?.pct ?? 50;
-        const probBase = clamp(BASE_NOM_PROB - PUBLIC_WEIGHT * ((votePct - 50) / 150), 0.25, 0.8);
+          const votePct  = gstate.publicRank.find(r => r.id === id)?.pct ?? 50;
+          const probBase = clamp(BASE_NOM_PROB - PUBLIC_WEIGHT * ((votePct - 50) / 150), 0.25, 0.8);
+          let prob = clamp(probBase /* + sesgos */ , 0.05, 0.85);
 
-          // ajustes de ritmo
-          const ev    = gstate.evalResults.length;
-          const total = ev + remaining;
-          const ratio = total ? ev / total : 0;
-          let prob    = probBase;
-          //if (ratio < 0.4 && gstate.nominados.length >= 1) prob = Math.max(0.15, prob - 0.2);
-         // if (ratio < 0.6 && gstate.nominados.length >= 2) prob = Math.max(0.15, prob - 0.25);
-          /* 
-          // sesgo de salvado para 1.º y 2.º (más fuerte en galas tempranas)
-          const earlyNomBias = (() => {
-            if (evIndex === 0) {               
-              if (gala <= 3) return -0.28;
-              if (gala <= 6) return -0.20;
-              return -0.14;
-            }
-            if (evIndex === 1) {               
-              if (gala <= 3) return -0.18;
-              if (gala <= 6) return -0.12;
-              return -0.08;
-            }
-            return 0;
-          })();
-          */
+          try {
+            const songTitle = getSongFor(id, summaries, gala);
+            const normalize = s => (s || "").toLowerCase()
+              .normalize("NFD").replace(/\p{Diacritic}/gu, "")
+              .replace(/^["“”«»]+|["“”«»]+$/g, "")
+              .replace(/\s+/g, " ")
+              .trim();
+            const req =
+              songTitle
+                ? (songsMeta.exact?.[songTitle.trim()] ??
+                  songsMeta.norm?.[normalize(songTitle)] ?? null)
+                : null;
 
-          // neutralizado
-          const earlyNomBias = 0;
+            const stats = contestants.find(c => c.id === id)?.stats;
+            const perfMod = performanceModifier(stats, req);
+            prob = clamp(prob + perfMod, 0.02, 0.90);
+          } catch(e) {}
 
-
-          prob = clamp(prob + earlyNomBias, 0.05, 0.85);  // reducir prob de NOMINADO para 1.º/2.º
-
-        // ——— AJUSTE POR ESTADÍSTICAS VS CANCIÓN ———
-        try {
-          const songTitle = getSongFor(id, summaries, gala);
-
-          const normalize = s => (s || "")
-            .toLowerCase()
-            .normalize("NFD").replace(/\p{Diacritic}/gu, "")
-            .replace(/^["“”«»]+|["“”«»]+$/g, "")
-            .replace(/\s+/g, " ")
-            .trim();
-
-          // ⬇️ Busca primero exacto, si no, normalizado
-          const req =
-            songTitle
-              ? (songsMeta.exact?.[songTitle.trim()] ??
-                songsMeta.norm?.[normalize(songTitle)] ??
-                null)
-              : null;
-
-          const stats = contestants.find(c => c.id === id)?.stats;
-
-          const probAntes   = prob;
-          const perfMod     = performanceModifier(stats, req);
-          const probDespues = clamp(prob + perfMod, 0.02, 0.90); // 0.02 = 2% de nominación como suelo
-          prob = probDespues;
-
-
-          // (debug)
-          console.log({ name: nameOf(id), songTitle, probAntes, perfMod, probDespues });
-
-          prob = probDespues;
-        } catch(e) {/* silencioso */}
-
-          // decisión determinista: si probabilidad >= 0.5 ⇒ nominado, si no ⇒ salvado
-          if (prob >= 0.5) {
-            decision = "nominado";
-          } else {
-            decision = "salvado";
-          }
-
+          decision = (prob >= 0.5) ? "nominado" : "salvado";
         }
       }
 
-      // seguridad: nunca 3 nominados seguidos, PERO respeta el plan de las dos últimas
+      // seguridad: nunca 3 nominados seguidos (fuera de las dos últimas)
       const inLastTwo = (remaining <= 2);
       if (!inLastTwo && decision === "nominado" && last2[0] === "nominado" && last2[1] === "nominado") {
         decision = "salvado";
       }
 
-      // Postcondición: que aún sea posible llegar a 4 nominados
-      let nomAfter = gstate.nominados.length + (decision === "nominado" ? 1 : 0);
-      let remAfter = remaining - 1;
+      // Postcondición: debe seguir siendo posible llegar a 4 nominados
+      let nomAfter  = gstate.nominados.length + (decision === "nominado" ? 1 : 0);
+      let remAfter  = remaining - 1;
       let needAfter = 4 - nomAfter;
       if (needAfter > remAfter) {
-        // si no llegamos a 4, forzamos nominación aquí
         decision = "nominado";
-        nomAfter = gstate.nominados.length + 1;
-        remAfter = remaining - 1;
+        nomAfter  = gstate.nominados.length + 1;
+        remAfter  = remaining - 1;
       }
-      
-      // 3D) Aplicar decisión + avanzar plan + sacar de orden
+
+      // 3D) Aplicar
       if (decision === "nominado" && gstate.nominados.length < 4) {
         writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINADO/A</strong>.`);
         setGstate({
@@ -1756,6 +1771,8 @@ export default function SimuladorOT() {
         });
       }
     }
+
+
 
     function profesoresSalvanUno(){
         if(!gstate || gstate.nominados.length!==4) return;
@@ -1972,8 +1989,12 @@ export default function SimuladorOT() {
 
       const nomCounts = Object.fromEntries(vivos.map(c => [c.id, countNominaciones(c.id)]));
       const maxNoms   = Math.max(0, ...Object.values(nomCounts)); // 0 si todos 0
+      const DEBUG_G10 = false;     // para ocultar/mostrar "📊 G10 bias debug"
+      const SHOW_G10_SUMMARY = false; // para ocultar/mostrar "📊 Gala 10 – Sumas del jurado"
 
-      pushLog(`📊 G10 bias debug: ${vivos.map(c => `${nameOf(c.id)} → ${nomCounts[c.id] || 0} nominaciones`).join(" · ")}`);
+      if (DEBUG_G10) {
+        pushLog(`📊 G10 bias debug: ${vivos.map(c => `${nameOf(c.id)} → ${nomCounts[c.id] || 0} nominaciones`).join(" · ")}`);
+      }
 
       // helper para redondear a medios puntos
       const toHalf = (x) => Math.round(x * 2) / 2;
@@ -2040,8 +2061,10 @@ export default function SimuladorOT() {
           : c
       ));
 
-      pushLog(`📊 <strong>Gala 10</strong> – Sumas del jurado: ${orden.map((x,i)=>`${i+1}. ${x.name} (${sumas[x.id].toFixed(2)})`).join(" · ")}.`);
-      pushLog(`👑 Finalistas por jurado (G10): ${top3.map(t=>t.name).join(", ")}. Nominados (4): ${bottom4.map(t=>t.name).join(", ")}.`);
+      if (SHOW_G10_SUMMARY) {
+        pushLog(`📊 <strong>Gala 10</strong> – Sumas del jurado: ${orden.map((x,i)=>`${i+1}. ${x.name} (${sumas[x.id].toFixed(2)})`).join(" · ")}.`);
+      }
+      pushLog(`👑 Finalistas por jurado (G10): <strong>${top3.map(t=>t.name).join(", ")}</strong>. Nominados (4): ${bottom4.map(t=>t.name).join(", ")}.`);
 
       // ✅ usa setGstate funcional para no pisar campos previos
       setGstate(prev => ({ 
@@ -2103,75 +2126,101 @@ export default function SimuladorOT() {
   function gala10Profes(){ if(!gstate || !gstate.nominados || gstate.nominados.length!==4) return; const salvado=pickRandom(gstate.nominados,1)[0]; setContestants(prev=>prev.map(c=>c.id===salvado?{...c,status:"finalista",history:[...c.history,{gala,evento:"4º finalista (profes, G10)"}]}:c)); pushLog(`🎓 Profesores eligen 4º finalista (G10): <strong>${nameOf(salvado)}</strong>.`); const restantes=gstate.nominados.filter(id=>id!==salvado); setGstate({...gstate, nominados:restantes, profesorSalvoId:salvado}); setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), g10:{ ...(s[gala]?.g10||{}), cuarto:salvado, restantes } }})); setStage("gala10_compas"); }
   
   function gala10Compas(){
-      if(!gstate) return;
+    if (!gstate) return;
 
-      const electores = contestants.filter(c=>c.status==="finalista").map(c=>c.id);
-      const candidatos = gstate.nominados; // 3 ids
-      const votos = [];
-
-      // Emisión de votos
-      electores.forEach(v=>{
-        const elegido = pickRandom(candidatos,1)[0];
-        votos.push({ voterId:v, votedId:elegido });
-      });
-
-      // Conteo
-      const recuento = { [candidatos[0]]:0, [candidatos[1]]:0, [candidatos[2]]:0 };
-      votos.forEach(v=> recuento[v.votedId]++);
-
-      // 1) Lista vertical de votos (igual que Galas 1–9)
-      const votosList = votos.map(v=>`<li>${nameOf(v.voterId)} → ${nameOf(v.votedId)}</li>`).join("");
-      pushLog(`🧑‍🤝‍🧑 Votación de compañeros (G10):<ul style="margin:4px 0 0 16px;">${votosList}</ul>`);
-
-      // 2) 📊 Recuento (debajo de la lista)
-      const contadorHTML = candidatos
-        .map(id => `<strong>${nameOf(id)}</strong> ${recuento[id]}`)
-        .join(" · ");
-      pushLog(`📊 Recuento de votos (compañeros, G10): ${contadorHTML}`);
-
-      // Ganador (si hay empate, azar entre empatados)
-      const max = Math.max(...Object.values(recuento));
-      const empatados = Object.entries(recuento).filter(([,n])=>n===max).map(([id])=>id);
-      const ganador = pickRandom(empatados,1)[0];
-
-      // Efectos y logs
-      setContestants(prev=>prev.map(c=>c.id===ganador?{
-        ...c, status:"finalista", history:[...c.history,{gala,evento:"5º finalista (compañeros, G10)"}]
-      }:c));
-
-      pushLog(`✅ Más votado por compañeros: <strong>${nameOf(ganador)}</strong> (5º finalista).`);
-
-      const restantes = candidatos.filter(id=>id!==ganador);
-      setCarryNominees(restantes);
-      pushLog(`➡️ A <strong>Gala 11</strong>: el público decide el 6º finalista entre ${restantes.map(nameOf).join(" y ")}.`);
-
-      setSummaries(s=>({
-        ...s,
-        [gala]: { ...(s[gala]||{gala}), g10:{ ...(s[gala]?.g10||{}), quinto:ganador, restantes } }
-      }));
-
-      // 🔁 Completar valoraciones en la tabla de reparto (Gala 10)
-      setSummaries(s =>
-        rellenarValoracionesReparto(
-          gala,
-          {
-            ...s,
-            [gala]: {
-              ...(s[gala] || { gala }),
-              juradoNominados: gstate.nominados || [],
-              profesorSalvoId: gstate.profesorSalvoId,
-              salvadoCompanerosId: ganador,
-              finalNominees: restantes,   // ← en G10 se llama "restantes"
-              [gala]: s[gala]?.[gala] || {}
-            }
-          },
-          contestants
-        )
-      );
-
-
-      setStage("galaCerrada");
+    const electores  = contestants.filter(c => c.status === "finalista").map(c => c.id);
+    const candidatos = gstate.nominados; // deben ser 3 ids
+    if (!Array.isArray(candidatos) || candidatos.length !== 3) {
+      pushLog("⚠️ No hay 3 nominados para la votación de compañeros (G10).");
+      return;
     }
+
+    // 1) Emisión de votos
+    const votos = [];
+    electores.forEach(v => {
+      const elegido = pickRandom(candidatos, 1)[0];
+      votos.push({ voterId: v, votedId: elegido });
+    });
+
+    // 2) Lista de votos
+    const votosList = votos.map(v => `<li>${nameOf(v.voterId)} → ${nameOf(v.votedId)}</li>`).join("");
+    pushLog(`🧑‍🤝‍🧑 Votación de compañeros (G10):<ul style="margin:4px 0 0 16px;">${votosList}</ul>`);
+
+    // 3) Recuento inicial
+    const recuento = { [candidatos[0]]:0, [candidatos[1]]:0, [candidatos[2]]:0 };
+    votos.forEach(v => recuento[v.votedId]++);
+    pushLog(`📊 Recuento de votos (compañeros, G10): ${
+      candidatos.map(id => `<strong>${nameOf(id)}</strong> ${recuento[id]}`).join(" · ")
+    }`);
+
+    // 4) Empate en cabeza → privilegio +1 del finalista con mejor nota del jurado en G10
+    let max = Math.max(...candidatos.map(id => recuento[id]));
+    let empatados = candidatos.filter(id => recuento[id] === max);
+
+    if (empatados.length > 1) {
+      const sumas = (summaries?.[gala]?.g10?.sumas) ?? gstate?.g10_sumas ?? null;
+      if (sumas) {
+        const electorPrivilegiado = [...electores].sort((a,b) => {
+          const sa = typeof sumas[a] === "number" ? sumas[a] : -Infinity;
+          const sb = typeof sumas[b] === "number" ? sumas[b] : -Infinity;
+          if (sb !== sa) return sb - sa;                // mayor suma primero
+          return String(a).localeCompare(String(b));    // desempate estable
+        })[0];
+
+        const suVoto = votos.find(v => v.voterId === electorPrivilegiado)?.votedId;
+        if (suVoto && empatados.includes(suVoto)) {
+          recuento[suVoto] += 1; // +1 SOLO en caso de empate y si su voto está entre los empatados
+          pushLog(`🏅 Desempate: mejor nota del jurado en G10 (${nameOf(electorPrivilegiado)}) otorga +1 a <strong>${nameOf(suVoto)}</strong>.`);
+        }
+        // recalcular por si rompimos el empate
+        max = Math.max(...candidatos.map(id => recuento[id]));
+        empatados = candidatos.filter(id => recuento[id] === max);
+      }
+    }
+
+    // 5) Recuento final
+    pushLog(`📊 Recuento final (compañeros, G10): ${
+      candidatos.map(id => `<strong>${nameOf(id)}</strong> ${recuento[id]}`).join(" · ")
+    }`);
+
+    // 6) Ganador (si persiste empate, azar entre empatados)
+    const ganador = (empatados.length > 1) ? pickRandom(empatados, 1)[0] : empatados[0];
+    if (!ganador) { pushLog("⚠️ No se pudo determinar el 5º finalista por compañeros."); return; }
+
+    // 7) Marcar 5º finalista
+    setContestants(prev => prev.map(c => c.id === ganador ? {
+      ...c,
+      status: "finalista",
+      history: [...(c.history || []), { gala, evento: "5º finalista (compañeros, G10)" }]
+    } : c));
+    pushLog(`✅ Más votado por compañeros: <strong>${nameOf(ganador)}</strong> (5º finalista).`);
+
+    // 8) Preparar duelo para G11 (quedan 2 nominados)
+    const nominadosRestantes = candidatos.filter(id => id !== ganador);
+    const salvadosSet = new Set(gstate.salvados); salvadosSet.add(ganador);
+
+    setGstate({
+      ...gstate,
+      votosCompaneros: votos,
+      salvadoCompanerosId: ganador,
+      nominados: nominadosRestantes,
+      salvados: salvadosSet
+    });
+
+    setSummaries(s => ({
+      ...s,
+      [gala]: { ...(s[gala] || { gala }), salvadoCompanerosId: ganador, votosCompaneros: votos, finalNominees: nominadosRestantes }
+    }));
+
+    pushLog(`🟥 Nominados para la próxima gala: <strong>${nameOf(nominadosRestantes[0])}</strong> vs <strong>${nameOf(nominadosRestantes[1])}</strong>.`);
+    setCarryNominees(nominadosRestantes);
+
+    // 9) Cambiar etapa → mostrará el botón "Cerrar gala..."
+    setStage("galaCerrada");
+  }
+
+
+
 
     function g11_iniciarCiegos(){
       if(carryNominees.length!==2){ pushLog("⚠️ En Gala 11 deben quedar 2 no-finalistas."); return; }
