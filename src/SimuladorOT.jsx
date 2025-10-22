@@ -906,65 +906,64 @@ export default function SimuladorOT() {
 
 
 
-      const onDownloadRecorrido = async () => {
-      const node = document.getElementById('recorrido-capture');
+    const onDownloadRecorrido = async () => {
+      const node = document.getElementById("recorrido-capture");
       if (!node) {
-        alert('No se encontró la tabla del recorrido 😕');
+        alert("No se encontró la tabla del recorrido 😕");
         return;
       }
 
-      // Guardar estilos anteriores
+      // Guardamos estilos para restaurar luego
       const prev = {
         overflow: node.style.overflow,
-        height: node.style.height,
-        maxHeight: node.style.maxHeight,
+        margin: node.style.margin,
+        padding: node.style.padding,
+        transform: node.style.transform,
+        background: node.style.background,
+        display: node.style.display,
       };
 
-      // (Opcional) desactivar headers sticky durante la captura
-      const stickyHeads = Array.from(node.querySelectorAll('th'));
-      const prevPos = stickyHeads.map(th => th.style.position);
-      stickyHeads.forEach(th => { if (getComputedStyle(th).position === 'sticky') th.style.position = 'static'; });
+      // Desactivar sticky en cabeceras para la captura
+      const ths = Array.from(node.querySelectorAll("th"));
+      const prevPos = ths.map((th) => th.style.position);
+      ths.forEach((th) => (th.style.position = "static"));
 
-      // Expandir para capturar todo
-      node.style.overflow = 'visible';
-      node.style.height = 'auto';
-      node.style.maxHeight = 'none';
+      // El nodo de captura debe estar "limpio"
+      node.style.overflow = "visible";
+      node.style.margin = "0";
+      node.style.padding = "0";
+      node.style.transform = "none";
+      node.style.background = "#fff";
+      node.style.display = "inline-block"; // evita añadir ancho/alto extra
 
-      // Forzar reflow antes de medir
-      await new Promise(r => requestAnimationFrame(r));
-
-      const width  = Math.ceil(node.scrollWidth);
+      // Tamaño exacto de contenido (aunque haya scroll en el wrapper)
+      const width = Math.ceil(node.scrollWidth);
       const height = Math.ceil(node.scrollHeight);
 
       try {
         const dataUrl = await toPng(node, {
-          pixelRatio: 2,
-          backgroundColor: '#fff',
-          cacheBust: true,
           width,
           height,
-          style: { // asegura escala 1:1
-            transform: 'none',
-            height: `${height}px`,
-            width: `${width}px`,
-          },
+          pixelRatio: 2,
+          cacheBust: true,
+          backgroundColor: "#fff",
+          style: { margin: 0, padding: 0, transform: "none" },
         });
 
-        const a = document.createElement('a');
-        a.download = `recorrido.png`;
-        a.href = dataUrl;
-        a.click();
+        const link = document.createElement("a");
+        link.download = "recorrido.png";
+        link.href = dataUrl;
+        link.click();
       } catch (err) {
-        console.error('Error generando imagen del recorrido:', err);
-        alert('No se pudo generar la imagen 😔');
+        console.error("Error generando imagen del recorrido:", err);
+        alert("No se pudo generar la imagen 😔");
       } finally {
         // Restaurar estilos
-        node.style.overflow = prev.overflow;
-        node.style.height = prev.height;
-        node.style.maxHeight = prev.maxHeight;
-        stickyHeads.forEach((th, i) => (th.style.position = prevPos[i] || ''));
+        Object.assign(node.style, prev);
+        ths.forEach((th, i) => (th.style.position = prevPos[i] || ""));
       }
     };
+
 
     function g0_setup(list) {
       // (opcional) si quieres asegurar que hay canciones cargadas
@@ -3064,28 +3063,44 @@ function RecorridoTable({ contestants, summaries }){
   });
 
     return (
-    // 👇 este id es lo que capturaremos como imagen
-    <div id="recorrido-capture" className="overflow-auto">
-      <table style={{ borderCollapse:"collapse", width:"100%" }}>
-        <thead>
-          <tr>
-            {headers.map((h,i)=>(
-              <th key={i}
-                  style={{ position:"sticky", top:0, background:"#fafafa",
-                           border:"1px solid #ddd", padding:6, fontSize:12 }}>
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((cells,ri)=>(
-            <tr key={ri}>
-              {cells.map((c,ci)=>(<td key={ci} style={c.style}>{c.text}</td>))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+      // Contenedor con scroll para la UI (NO se captura)
+      <div className="overflow-auto">
+        {/* Este es el nodo que vamos a capturar */}
+        <div id="recorrido-capture" style={{ background: "#fff" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              <tr>
+                {headers.map((h, i) => (
+                  <th
+                    key={i}
+                    style={{
+                      position: "sticky", // luego lo desactivamos temporalmente
+                      top: 0,
+                      background: "#fafafa",
+                      border: "1px solid #ddd",
+                      padding: 6,
+                      fontSize: 12,
+                    }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((cells, ri) => (
+                <tr key={ri}>
+                  {cells.map((c, ci) => (
+                    <td key={ci} style={c.style}>
+                      {c.text}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+
 }
