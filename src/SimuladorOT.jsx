@@ -504,27 +504,39 @@ function buildValoracionesOrder(allIds, nomineeIds){
   let consecNom = 0;
   let nomInFirst3 = 0;
 
-  for (let i = 0; i < N; i++) {
-    if (reservado && i === slotUlt) {
-      if (consecNom === 2 && otros.length) { order.push(otros.pop()); consecNom = 0; i++; }
-      order.push(reservado); consecNom++; if (i < 3) nomInFirst3++;
-      continue;
+    for (let i = 0; i < N; i++) {
+      // coloca el reservado en penúltima/última
+      if (reservado && i === slotUlt) {
+        if (consecNom === 2 && otros.length) { order.push(otros.pop()); consecNom = 0; i++; }
+        order.push(reservado); consecNom++; if (i < 3) nomInFirst3++;
+        continue;
+      }
+
+      // ——— REGLAS ———
+      const earlyCap = (i < 3 && nomInFirst3 >= 1);      // en las 3 primeras, máx 1 nominado
+      const puedeNom = nom.length > 0 && consecNom < 2 && !earlyCap;
+
+      // HUECOS que quedan excluyendo el reservado (si aún no ha llegado)
+      const slotsRestantes = (N - i) - (reservado && i < slotUlt ? 1 : 0);
+
+      // Si los nominados que quedan ocupan exactamente los huecos que quedan,
+      // hay que sacar uno ahora para no empujarlos todos al final.
+      const debeEquilibrar = puedeNom && nom.length === slotsRestantes;
+
+      // También forzamos nominado si ya no quedan "otros"
+      const debeNom = puedeNom && (debeEquilibrar || otros.length === 0);
+
+      let pick = null;
+      if (debeNom || (puedeNom && Math.random() < 0.5)) {
+        pick = nom.pop(); consecNom++; if (i < 3) nomInFirst3++;
+      } else {
+        pick = otros.pop();
+        if (pick == null) { pick = nom.pop(); consecNom++; if (i < 3) nomInFirst3++; }
+        else { consecNom = 0; }
+      }
+      order.push(pick);
     }
 
-    const earlyCap = (i < 3 && nomInFirst3 >= 1);      // en primeras 3, máx 1 nominable
-    const puedeNom = nom.length > 0 && consecNom < 2 && !earlyCap;
-    const debeNom  = !earlyCap && otros.length === 0 && nom.length > 0 && consecNom < 2;
-
-    let pick = null;
-    if (debeNom || (puedeNom && Math.random() < 0.5)) {
-      pick = nom.pop(); consecNom++; if (i < 3) nomInFirst3++;
-    } else {
-      pick = otros.pop();
-      if (pick == null) { pick = nom.pop(); consecNom++; if (i < 3) nomInFirst3++; }
-      else { consecNom = 0; }
-    }
-    order.push(pick);
-  }
 
   return order;
 }
@@ -1588,14 +1600,19 @@ export default function SimuladorOT() {
 
       // 3B) Plan especial para las dos últimas valoraciones
       if (remaining === 2 && !plan) {
+        const last2 = gstate.evalResults.slice(-2).map(r => r.result);
         if (needed >= 2) {
-          plan = ["nominado", "nominado"];
+          // necesitamos 2 nominados, pero evita 3–4 seguidos
+          plan = (last2[0] === "nominado" && last2[1] === "nominado")
+            ? ["salvado", "nominado"]
+            : ["nominado", "nominado"];
         } else if (needed === 1) {
           plan = Math.random() < 0.5 ? ["nominado", "salvado"] : ["salvado", "nominado"];
         } else {
           plan = ["salvado", "salvado"];
         }
       }
+
 
       // 3C) Decidir acción con sesgo de salvado al inicio y ventana deslizante
       const evIndex = gstate.evalResults.length;                // cuántos ya evaluados (0 = primero, 1 = segundo, ...)
