@@ -2635,16 +2635,18 @@ export default function SimuladorOT() {
                           <CardContent className="p-4">
                             <div className="flex items-center justify-between">
                               {/* Foto en lugar del nombre (con fallback) */}
-                                <img
-                                  src={
-                                    (c.photo && c.photo.trim()) ||
-                                    photoByName.get(norm(c.name)) ||
-                                    "/ot_photos/sinfoto.gif"
-                                  }
-                                  alt={c.name}
-                                  title={c.name}
-                                  className="w-14 h-14 rounded-md object-cover bg-white border"
-                                />
+                              <img
+                                src={
+                                  (c.photo && c.photo.trim()) ||
+                                  photoByName.get(norm(c.name)) ||
+                                  "/ot_photos/sinfoto.gif"
+                                }
+                                alt={c.name}
+                                title={c.name}
+                                className={`w-14 h-14 rounded-md object-cover bg-white border transition-all duration-500 ${
+                                  c.status === "eliminado" ? "grayscale opacity-90" : ""
+                                }`}
+                              />
                               {/* Badge de estado se mantiene igual */}
                               <div>
                                 {c.status === "active"    && (<Badge variant="secondary">En academia</Badge>)}

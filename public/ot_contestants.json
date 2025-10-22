@@ -47,7 +47,7 @@
   { "id": "soniapoblet", "name": "Sonia", "gender": "f", "photo": "/ot_photos/OT2003/Sonia.gif", "stats": { "afinacion": 7, "baile": 11, "presencia": 8, "emocion": 7 } },
   { "id": "miriamvillar", "name": "Miriam Villar", "gender": "f", "photo": "/ot_photos/OT2003/Miriam.gif", "stats": { "afinacion": 7, "baile": 6, "presencia": 6, "emocion": 7 } },
   { "id": "josegimenez", "name": "José Giménez", "gender": "m", "photo": "/ot_photos/OT2003/Jose.gif", "stats": { "afinacion": 8, "baile": 7, "presencia": 5, "emocion": 6 } },
-  { "id": "sonny", "name": "Sonny' Monreal", "gender": "m", "photo": "/ot_photos/OT2003/Federico.gif", "stats": { "afinacion": 5, "baile": 10, "presencia": 9, "emocion": 5 } },
+  { "id": "sonny", "name": "'Sonny' Monreal", "gender": "m", "photo": "/ot_photos/OT2003/Federico.gif", "stats": { "afinacion": 5, "baile": 10, "presencia": 9, "emocion": 5 } },
   { "id": "isabel", "name": "Isabel", "gender": "f", "photo": "/ot_photos/OT2003/Isabel.gif", "stats": { "afinacion": 9, "baile": 5, "presencia": 6, "emocion": 8 } },
   { "id": "sergiorivero", "name": "Sergio Rivero", "gender": "m", "photo": "/ot_photos/OT2005/Sergio Rivero.gif", "stats": { "afinacion": 13, "baile": 9, "presencia": 11, "emocion": 12 } },
   { "id": "soraya", "name": "Soraya", "gender": "f", "photo": "/ot_photos/OT2005/Soraya.gif", "stats": { "afinacion": 13, "baile": 8, "presencia": 12, "emocion": 10 } },
