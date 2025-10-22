@@ -97,5 +97,5 @@
   { "id": "rubennoel", "name": "Rubén", "gender": "m", "photo": "/ot_photos/OT2008/Ruben.gif", "stats": { "afinacion": 7, "baile": 8, "presencia": 6, "emocion": 5 } },
   { "id": "paulaortiz", "name": "Paula", "gender": "f", "photo": "/ot_photos/OT2008/Paula.gif", "stats": { "afinacion": 7, "baile": 7, "presencia": 4, "emocion": 4 } },
   { "id": "davidros", "name": "Ros", "gender": "m", "photo": "/ot_photos/OT2008/Ros.gif", "stats": { "afinacion": 10, "baile": 4, "presencia": 5, "emocion": 8 } },
-  { "id": "pattygarcia", "name": "Patty García", "gender": "f", "photo": "/ot_photos/OT2008/Patty Garcia.gif", "stats": { "afinacion": 12, "baile": 8, "presencia": 8, "emocion": 9 } }
+  { "id": "pattygarcia", "name": "Patty García", "gender": "f", "photo": "/ot_photos/OT2008/Patty Garcia.gif", "stats": { "afinacion": 10, "baile": 8, "presencia": 8, "emocion": 9 } }
 ]

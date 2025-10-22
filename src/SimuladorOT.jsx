@@ -585,9 +585,7 @@ function runSelfTests(){
 }
 
 export default function SimuladorOT() {
-  const [namesInput, setNamesInput] = useState(
-    Array.from({ length: 18 }, (_, i) => `Concursante ${i + 1}`).join("\n")
-  );
+  const [namesInput, setNamesInput] = useState("");
   const [contestants, setContestants] = useState([]);
   const [gala, setGala] = useState(1);
   const [viewGala, setViewGala] = useState(1);
@@ -2476,7 +2474,7 @@ export default function SimuladorOT() {
       {contestants.length===0 && (
         <Card>
           <CardContent className="p-6 space-y-4">
-            <p className="text-sb text-muted-foreground">Escribe exactamente <strong>18 nombres</strong> (uno por línea) y pulsa <strong>Iniciar</strong>. O bien elige a tu propio concursante (¡Asegúrate de dejar espacio en esta lista!)</p>
+            <p className="text-sb text-muted-foreground">Escribe exactamente <strong>18 nombres</strong> (uno por línea) y pulsa <strong>Iniciar</strong>. O bien <strong>elige a tu propio concursante</strong> (¡Asegúrate de dejar espacio en esta lista!)</p>
             <p className="text-sb text-muted-foreground">Puedes también <strong>crear</strong> a tu propio concursante con sus estadísticas propias. Al guardar lo podrás utilizar en este navegador cuando quieras. Si escribes el nombre directamente en esta lista no tendrá estadísticas y podría ser más propenso a la nominación.</p>
             <p className="text-xs text-muted-foreground">Puedes indicar <strong>género</strong> al final: <code>Nombre - el/elle/ella</code>. Si no lo indicas el género será n/b por defecto.</p>
             <Textarea rows={12} value={namesInput} onChange={e=>setNamesInput(e.target.value)} />
