@@ -425,7 +425,7 @@ export default function OTRosterPicker({
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar concursantes… (ej: David, Ve, Verónica)"
+          placeholder="Buscar concursantes… (ej: David, Verónica, Sandra)"
           className="flex-1 h-10 rounded-md border px-3 text-sm bg-white"
         />
         <Button type="button" onClick={handleRandomPick}>
