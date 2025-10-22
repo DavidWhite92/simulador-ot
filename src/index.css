@@ -1,3 +1,16 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Fondo global del simulador */
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background-image: url("/ot_photos/bg-simulador.jpg");
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: cover;
+  background-attachment: fixed;
+}

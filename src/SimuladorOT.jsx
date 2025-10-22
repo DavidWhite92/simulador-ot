@@ -6,10 +6,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toPng } from 'html-to-image';
+import OTRosterPicker from "./components/OTRosterPicker";
+
 
 // Utils
 const uid = () => Math.random().toString(36).slice(2);
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+// Público NO influye en nominaciones (0 = desactivado; 1 = igual que antes)
+const PUBLIC_WEIGHT = 0;
+const BASE_NOM_PROB = 0.55; // base neutra de nominación
 // const fmtPct = (n) => `${n.toFixed(2)}%`;
 const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
 const pickRandom = (arr, k = 1) => { const c=[...arr],o=[]; while(k-- > 0 && c.length){ o.push(c.splice(Math.floor(Math.random()*c.length),1)[0]); } return o; };
@@ -126,6 +131,45 @@ function buildRepartoConCanciones({ galaNum, reparto, summaries, allSongs }) {
     }
     return copy;
   });
+}
+
+// Busca qué canción tiene asignada un concursante en la gala actual
+function getSongFor(contestantId, summaries, gala){
+  const rep = summaries[gala]?.[gala]?.reparto;
+  if (!Array.isArray(rep)) return null;
+  for (const row of rep) {
+    const members = row?.members || [];
+    if (members.includes(contestantId)) return row.song || null;
+  }
+  return null;
+}
+
+// Calcula un modificador de probabilidad de NOMINACIÓN (positivo = peor, negativo = mejor)
+// stats/req en [0..15]. penaliza déficit y bonifica “sobrarse”.
+function performanceModifier(stats, req){
+  if (!stats || !req) return 0;
+  const clamp15 = v => Math.max(0, Math.min(15, +v || 0));
+  const S = {
+    afinacion: clamp15(stats.afinacion ?? stats.afinación),
+    baile:     clamp15(stats.baile),
+    presencia: clamp15(stats.presencia ?? stats["expresión"]),
+    emocion:   clamp15(stats.emocion ?? stats.emoción),
+  };
+  const R = {
+    afinacion: clamp15(req.afinacion ?? req.afinación),
+    baile:     clamp15(req.baile),
+    presencia: clamp15(req.presencia ?? req["expresión"]),
+    emocion:   clamp15(req.emocion ?? req.emoción),
+  };
+
+  // gap total en [-60, +60]
+  const gap = (S.afinacion - R.afinacion) + (S.baile - R.baile) +
+              (S.presencia - R.presencia) + (S.emocion - R.emocion);
+
+  // Convertimos gap en delta de prob. de NOMINACIÓN (más gap => menos prob)
+  // k=0.0083 hace que gap=+60 baje ~0.5 la prob, y gap=-60 la suba ~0.5
+  const k = 0.0083;
+  return -k * gap;   // negativo si va sobrado (reduce nominación), positivo si va justo (aumenta)
 }
 
 
@@ -553,10 +597,62 @@ export default function SimuladorOT() {
   const [gstate, setGstate] = useState({});
   const [summaries, setSummaries] = useState({});
   const [testResults, setTestResults] = useState([]);
+  const [photoByName, setPhotoByName] = useState(new Map());
+  const [route, setRoute] = useState("home");           // "home" | "selector"
+  const [pendingRealRoster, setPendingRealRoster] = useState(null); // guarda objetos seleccionados
+  const clearTypedList = () => {
+    setNamesInput("");           // vacía el textarea
+    setPendingRealRoster(null);  // opcional: limpia plantillas importadas
+  };
+
 
   // 🆕 Nuevo estado para las canciones
   const [songs, setSongs] = useState([]);
   const [songsReady, setSongsReady] = useState(false);
+  const [songsMeta, setSongsMeta] = useState({}); // { title -> {afinacion, baile, presencia, emocion} }
+
+      useEffect(() => {
+      const LS_KEY = "ot_custom_contestants";
+
+      const loadCustoms = () => {
+        try {
+          const raw = JSON.parse(localStorage.getItem(LS_KEY) || "[]");
+          return Array.isArray(raw) ? raw : [];
+        } catch {
+          return [];
+        }
+      };
+
+      const build = async () => {
+        try {
+          const res = await fetch("/ot_contestants.json");
+          const official = await res.json(); // [{name, photo,...}]
+          const customs = loadCustoms();     // [{name, photo,...}]
+
+          const map = new Map();
+          // oficiales
+          for (const p of official || []) {
+            if (p?.name && p?.photo) map.set(norm(p.name), p.photo);
+          }
+          // customs
+          for (const p of customs || []) {
+            if (p?.name && p?.photo) map.set(norm(p.name), p.photo);
+          }
+
+          setPhotoByName(map);
+        } catch {
+          // si falla el fetch, al menos cargar customs
+          const map = new Map();
+          for (const p of loadCustoms() || []) {
+            if (p?.name && p?.photo) map.set(norm(p.name), p.photo);
+          }
+          setPhotoByName(map);
+        }
+      };
+
+      build();
+    }, []);
+
 
     useEffect(() => {
       const url = "canciones.txt"; // relativo a /public
@@ -575,10 +671,44 @@ export default function SimuladorOT() {
         });
     }, []);
 
+        // debajo del useEffect que carga canciones.txt
+      useEffect(() => {
+        fetch("/songs_meta.json")
+          .then(r => r.json())
+          .then(list => {
+            const normalize = s => (s || "")
+              .toLowerCase()
+              .normalize("NFD").replace(/\p{Diacritic}/gu, "")     // quita tildes
+              .replace(/^["“”«»]+|["“”«»]+$/g, "")                // quita comillas exteriores
+              .replace(/\s+/g, " ")                                // colapsa espacios
+              .trim();
+
+            const exact = {};
+            const norm  = {};
+            (list || []).forEach(x => {
+              if (!x?.title) return;
+              const tExact = x.title.trim();
+              const tNorm  = normalize(x.title);
+              exact[tExact] = x;
+              norm[tNorm]   = x;
+            });
+
+            setSongsMeta({ exact, norm });
+            console.log("[SongsMeta] cargado:", Object.keys(exact).length);
+          })
+          .catch(err => {
+            console.warn("No pude cargar songs_meta.json", err);
+            setSongsMeta({});
+          });
+      }, []);
+
+
+
 
   useEffect(()=>{ setTestResults(runSelfTests()); },[]);
 
   const active     = useMemo(()=>contestants.filter(c=>c.status==="active"),[contestants]);
+  const canPickRoster = contestants.length === 0 && stage === "inicio";
   const finalists = useMemo(
   () => contestants.filter(c => c.status === "finalista" || c.status === "ganador"),
   [contestants]
@@ -650,20 +780,34 @@ export default function SimuladorOT() {
 
 
 
-  function iniciar(){
-    const lines = namesInput.split(/\r?\n/).map(s=>s.trim()).filter(s=>s.length>0);
+  function iniciar() {
+    const lines = namesInput
+      .split(/\r?\n/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+
     if (lines.length !== 18) {
       alert(`Hay ${lines.length} nombres. Deben ser exactamente 18, uno por línea (sin líneas vacías).`);
       return;
     }
 
-    
-  const inits = lines.map(line=>{
-  const { name, gender } = parseNameLine(line);
-  return { id:uid(), name, gender, status:"active", history:[] };
-});
-    try{
+    // mapa por nombre para cruzar con pendingRealRoster
+    const dbByName = Object.fromEntries(
+      (pendingRealRoster || []).map(p => [p.name.toLowerCase(), p])
+    );
+
+    // al crear cada concursante:
+    const inits = lines.map(line => {
+      const { name, gender } = parseNameLine(line);
+      const base = { id: uid(), name, gender, status: "active", history: [] };
+      const real = dbByName[name.toLowerCase()];
+      return real ? { ...base, photo: real.photo, stats: real.stats } : base;
+    });
+
+
+    try {
       setContestants(inits);
+      setPendingRealRoster(null); // limpia la plantilla para la siguiente vez
       setGala(0);
       setViewGala(0); // 👈 asegura que ves la Gala 0 en el historial
       setStage("gala0");
@@ -733,6 +877,34 @@ export default function SimuladorOT() {
     setGstate(null); 
     setSummaries({}); 
   }
+
+      if (route === "selector") {
+        return (
+          <OTRosterPicker
+            max={18}
+            onCancel={() => setRoute("home")}
+            onImport={(picked) => {
+              if (!picked?.length) return;
+
+              // (a) Mezclar con lo que ya hayas escrito a mano:
+              const typed = namesInput.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+              const pickedLines = picked.map(
+                p => `${p.name} - ${p.gender === "m" ? "él" : p.gender === "f" ? "ella" : "elle"}`
+              );
+              const combined = [...typed, ...pickedLines].slice(0, 18);
+              setNamesInput(combined.join("\n"));
+
+              // (b) Guardar roster real para inyectar foto+stats al iniciar()
+              setPendingRealRoster([ ...(pendingRealRoster || []), ...picked ]);
+
+              // (c) Volver a la app
+              setRoute("home");
+            }}
+          />
+        );
+      }
+
+
 
       const onDownloadRecorrido = async () => {
       const node = document.getElementById('recorrido-capture');
@@ -1265,9 +1437,6 @@ export default function SimuladorOT() {
         [gala]: {
           ...(s[gala] || { gala }),
           duelSaved: s[gala]?.duelSaved,
-          favoritoId,
-          top3Pct,
-          top3Ids,
           [gala]: { ...(s[gala]?.[gala] || {}) }
         }
       }));
@@ -1293,6 +1462,16 @@ export default function SimuladorOT() {
         const lista = orden.map(nameOf).join(" · ");
         pushLog(`🎖️ Los 3 favoritos (orden aleatorio): ${lista}`);
         setGstate({ ...gstate, top3NamesRevealed: true });
+
+          setSummaries(s => ({
+          ...s,
+          [gala]: {
+            ...(s[gala] || { gala }),
+            top3Ids: gstate.top3,          // 👈 solo nombres Top-3
+            [gala]: { ...(s[gala]?.[gala] || {}) }
+          }
+        }));
+
         // 👆 No fijamos favorit@ todavía, ni cambiamos de etapa
         return;
       }
@@ -1443,35 +1622,80 @@ export default function SimuladorOT() {
         if (nomsInLast3 >= 2) {
           decision = "salvado";
         } else {
-          // prob original por % público
-          const votePct  = gstate.publicRank.find(r => r.id === id)?.pct ?? 50;
-          const probBase = clamp(0.55 - (votePct - 50) / 150, 0.25, 0.8); // prob de ser NOMINADO
+        // público desactivado (PUBLIC_WEIGHT = 0)
+        const votePct = gstate.publicRank.find(r => r.id === id)?.pct ?? 50;
+        const probBase = clamp(BASE_NOM_PROB - PUBLIC_WEIGHT * ((votePct - 50) / 150), 0.25, 0.8);
 
           // ajustes de ritmo
           const ev    = gstate.evalResults.length;
           const total = ev + remaining;
           const ratio = total ? ev / total : 0;
           let prob    = probBase;
-          if (ratio < 0.4 && gstate.nominados.length >= 1) prob = Math.max(0.15, prob - 0.2);
-          if (ratio < 0.6 && gstate.nominados.length >= 2) prob = Math.max(0.15, prob - 0.25);
-
+          //if (ratio < 0.4 && gstate.nominados.length >= 1) prob = Math.max(0.15, prob - 0.2);
+         // if (ratio < 0.6 && gstate.nominados.length >= 2) prob = Math.max(0.15, prob - 0.25);
+          /* 
           // sesgo de salvado para 1.º y 2.º (más fuerte en galas tempranas)
           const earlyNomBias = (() => {
-            if (evIndex === 0) {               // primero
+            if (evIndex === 0) {               
               if (gala <= 3) return -0.28;
               if (gala <= 6) return -0.20;
               return -0.14;
             }
-            if (evIndex === 1) {               // segundo
+            if (evIndex === 1) {               
               if (gala <= 3) return -0.18;
               if (gala <= 6) return -0.12;
               return -0.08;
             }
             return 0;
           })();
+          */
+
+          // neutralizado
+          const earlyNomBias = 0;
+
 
           prob = clamp(prob + earlyNomBias, 0.05, 0.85);  // reducir prob de NOMINADO para 1.º/2.º
-          decision = Math.random() < prob ? "nominado" : "salvado";
+
+        // ——— AJUSTE POR ESTADÍSTICAS VS CANCIÓN ———
+        try {
+          const songTitle = getSongFor(id, summaries, gala);
+
+          const normalize = s => (s || "")
+            .toLowerCase()
+            .normalize("NFD").replace(/\p{Diacritic}/gu, "")
+            .replace(/^["“”«»]+|["“”«»]+$/g, "")
+            .replace(/\s+/g, " ")
+            .trim();
+
+          // ⬇️ Busca primero exacto, si no, normalizado
+          const req =
+            songTitle
+              ? (songsMeta.exact?.[songTitle.trim()] ??
+                songsMeta.norm?.[normalize(songTitle)] ??
+                null)
+              : null;
+
+          const stats = contestants.find(c => c.id === id)?.stats;
+
+          const probAntes   = prob;
+          const perfMod     = performanceModifier(stats, req);
+          const probDespues = clamp(prob + perfMod, 0.02, 0.90); // 0.02 = 2% de nominación como suelo
+          prob = probDespues;
+
+
+          // (debug)
+          console.log({ name: nameOf(id), songTitle, probAntes, perfMod, probDespues });
+
+          prob = probDespues;
+        } catch(e) {/* silencioso */}
+
+          // decisión determinista: si probabilidad >= 0.5 ⇒ nominado, si no ⇒ salvado
+          if (prob >= 0.5) {
+            decision = "nominado";
+          } else {
+            decision = "salvado";
+          }
+
         }
       }
 
@@ -1605,14 +1829,15 @@ export default function SimuladorOT() {
       .filter(([, n]) => n === max)
       .map(([id]) => id);
 
+    // === Empate y voto doble del favorito (solo para desempate) ===
+    let desempateMsg = null;
     if (empatados.length > 1) {
       const favId = gstate.favoritoId ?? null;
       if (favId) {
-        const votoFav = votoDe[favId]; // a quién votó el favorito
+        const votoFav = votoDe[favId];
         if (votoFav && empatados.includes(votoFav)) {
-          // ✅ Desempate correcto: gana quien votó el favorito si estaba entre los empatados
           empatados = [votoFav];
-          pushLog(`⭐ Desempate: el voto del favorito (${nameOf(favId)}) decide a favor de ${nameOf(votoFav)}.`);
+          desempateMsg = `⭐ Desempate: el voto del favorito (${nameOf(favId)}) decide a favor de ${nameOf(votoFav)}.`;
         }
       }
     }
@@ -1629,8 +1854,13 @@ export default function SimuladorOT() {
       const votosList = votos.map(v => `<li>${nameOf(v.voterId)} → ${nameOf(v.votedId)}</li>`).join("");
       pushLog(`🧑‍🤝‍🧑 Votación de compañeros:<ul style="margin:4px 0 0 16px;">${votosList}</ul>${gstate.favoritoId ? "<div class=\"text-xs\">* El voto del favorito vale doble en caso de empate</div>" : ""}`);
 
+
+      // 📊 Mostrar recuento
       const contadorHTML = candidatos.map(id => `<strong>${nameOf(id)}</strong> ${recuento[id] ?? 0}`).join(" · ");
       pushLog(`📊 Recuento de votos (compañeros): ${contadorHTML}`);
+
+      // ⭐ Mostrar mensaje de desempate (si lo hubo)
+      if (desempateMsg) pushLog(desempateMsg);
 
       pushLog(`✅ Más votado por compañeros: <strong>${nameOf(ganador)}</strong> (se salva).`);
 
@@ -2233,8 +2463,13 @@ export default function SimuladorOT() {
         />
         <div className="flex gap-2">
           <div className="flex gap-2 mb-4">
-              <Button onClick={reiniciar}>🔁 Reiniciar</Button>
-              <Button onClick={onDownloadRecorrido}>⬇️ Descargar</Button>
+              {canPickRoster && (
+                <Button onClick={() => setRoute("selector")}>
+                  👥 Elegir concursantes OT
+                </Button>
+              )}
+            <Button onClick={reiniciar}>🔁 Reiniciar</Button>
+            <Button onClick={onDownloadRecorrido}>⬇️ Descargar</Button>
           </div>
         </div>
       </div>
@@ -2242,10 +2477,16 @@ export default function SimuladorOT() {
       {contestants.length===0 && (
         <Card>
           <CardContent className="p-6 space-y-4">
-            <p className="text-sm text-muted-foreground">Escribe exactamente 18 nombres (uno por línea) y pulsa <strong>Iniciar</strong>.</p>
-            <p className="text-xs text-muted-foreground">Puedes indicar género al final: <code>Nombre - él</code> / <code>Nombre - ella</code> / <code>Nombre - elle</code></p>
+            <p className="text-sb text-muted-foreground">Escribe exactamente <strong>18 nombres</strong> (uno por línea) y pulsa <strong>Iniciar</strong>. O bien elige a tu propio concursante (¡Asegúrate de dejar espacio en esta lista!)</p>
+            <p className="text-sb text-muted-foreground">Puedes también <strong>crear</strong> a tu propio concursante con sus estadísticas propias. Al guardar lo podrás utilizar en este navegador cuando quieras. Si escribes el nombre directamente en esta lista no tendrá estadísticas y podría ser más propenso a la nominación.</p>
+            <p className="text-xs text-muted-foreground">Puedes indicar <strong>género</strong> al final: <code>Nombre - el/elle/ella</code>. Si no lo indicas el género será n/b por defecto.</p>
             <Textarea rows={12} value={namesInput} onChange={e=>setNamesInput(e.target.value)} />
-            <div className="flex gap-2"><Button onClick={iniciar}>▶️ Iniciar</Button></div>
+            <div className="flex gap-2">
+              <Button onClick={iniciar}>▶️ Iniciar</Button>
+              <Button variant="outline" onClick={clearTypedList}>
+                Limpiar lista
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -2386,8 +2627,8 @@ export default function SimuladorOT() {
 
               <Tabs defaultValue="historial">
                 <TabsList>
-                  <TabsTrigger value="plantilla">👥 Plantilla</TabsTrigger>
-                  <TabsTrigger value="historial">📜 Registro</TabsTrigger>
+                  <TabsTrigger value="plantilla">👥 Concursantes</TabsTrigger>
+                  <TabsTrigger value="historial">🎤 Galas</TabsTrigger>
                 </TabsList>
                 <TabsContent value="plantilla" className="mt-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -2396,12 +2637,23 @@ export default function SimuladorOT() {
                         <Card className="border">
                           <CardContent className="p-4">
                             <div className="flex items-center justify-between">
-                              <div className="font-medium">{c.name}</div>
+                              {/* Foto en lugar del nombre (con fallback) */}
+                                <img
+                                  src={
+                                    (c.photo && c.photo.trim()) ||
+                                    photoByName.get(norm(c.name)) ||
+                                    "/ot_photos/sinfoto.gif"
+                                  }
+                                  alt={c.name}
+                                  title={c.name}
+                                  className="w-14 h-14 rounded-md object-cover bg-white border"
+                                />
+                              {/* Badge de estado se mantiene igual */}
                               <div>
-                                {c.status==="active" && (<Badge variant="secondary">En academia</Badge>)}
-                                {c.status==="eliminado" && (<Badge variant="destructive">Eliminado/a</Badge>)}
-                                {c.status==="finalista" && (<Badge>⭐ Finalista</Badge>)}
-                                {c.status==="ganador" && (<Badge>🏆 Ganador/a</Badge>)}
+                                {c.status === "active"    && (<Badge variant="secondary">En academia</Badge>)}
+                                {c.status === "eliminado" && (<Badge variant="destructive">Eliminado/a</Badge>)}
+                                {c.status === "finalista" && (<Badge>⭐ Finalista</Badge>)}
+                                {c.status === "ganador"   && (<Badge>🏆 Ganador/a</Badge>)}
                               </div>
                             </div>
                           </CardContent>

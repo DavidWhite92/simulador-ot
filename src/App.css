@@ -40,3 +40,19 @@
 .read-the-docs {
   color: #888;
 }
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background-image: url("/ot_photos/bg-simulador.jpg");
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: cover;
+  /* ❌ evita esto en móviles:
+  background-attachment: fixed;
+  */
+}
+
+
