@@ -2560,24 +2560,33 @@ export default function SimuladorOT() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <img
           src="/LogoOT2005_Negro.png"
           alt="Simulador Web de Operación Triunfo"
           className="h-16 sm:h-20 md:h-[6.75rem] w-auto transition-all duration-300"
-          style={{ objectFit: "contain" }}
         />
-        <div className="flex gap-2">
-          <div className="flex gap-2 mb-4">
-              {canPickRoster && (
-                <Button onClick={() => setRoute("selector")}>
-                  👥 Elegir concursantes OT
-                </Button>
-              )}
-            <Button onClick={reiniciar}>🔁 Reiniciar</Button>
-          </div>
+
+        <div className="flex gap-2 w-full sm:w-auto">
+          {canPickRoster && (
+            <Button
+              onClick={() => setRoute("selector")}
+              className="flex-1 sm:flex-none px-3 py-2 text-sm sm:px-4 sm:py-2 sm:text-base"
+            >
+              {/* etiqueta corta en móvil, larga en ≥sm */}
+              <span className="sm:hidden">Elegir concursantes</span>
+              <span className="hidden sm:inline">👥 Elegir concursantes OT</span>
+            </Button>
+          )}
+          <Button
+            onClick={reiniciar}
+            className="flex-1 sm:flex-none px-3 py-2 text-sm sm:px-4 sm:py-2 sm:text-base"
+          >
+            🔁 Reiniciar
+          </Button>
         </div>
       </div>
+
 
       {contestants.length===0 && (
         <Card>
