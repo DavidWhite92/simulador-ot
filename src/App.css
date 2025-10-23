@@ -50,9 +50,9 @@ body {
   background-repeat: no-repeat;
   background-position: center center;
   background-size: cover;
-  /* ❌ evita esto en móviles:
+  /* ❌ evita esto en móviles:*/
   background-attachment: fixed;
-  */
+  
 }
 
 
