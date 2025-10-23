@@ -1621,7 +1621,7 @@ export default function SimuladorOT() {
       // (a) 3ª valoración y aún 0 nominados → forzar NOMINADO
       const evIndex = gstate.evalResults.length; // 0,1,2... (2 == tercera)
       if (gala === 9 && evIndex === 2 && gstate.nominados.length === 0) {
-        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINADO/A</strong>.`);
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINAD@</strong>.`);
         setGstate({
           ...gstate,
           currentEvaluadoId: undefined,
@@ -1636,7 +1636,7 @@ export default function SimuladorOT() {
 
       // (b) Quedan 4 por evaluar y faltan ≥3 nominados → forzar NOMINADO ahora
       if (gala === 9 && remaining === 4 && needed >= 3) {
-        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINADO/A</strong>.`);
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINAD@</strong>.`);
         setGstate({
           ...gstate,
           currentEvaluadoId: undefined,
@@ -1652,7 +1652,7 @@ export default function SimuladorOT() {
 
       // 3A-bis) Si quedan 3 y faltan ≥2 → nomina YA (evita pedir 2 en las dos últimas)
       if (remaining === 3 && needed >= 2) {
-        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINADO/A</strong>.`);
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINAD@</strong>.`);
         setGstate({
           ...gstate,
           currentEvaluadoId: undefined,
@@ -1767,7 +1767,7 @@ export default function SimuladorOT() {
 
       // 3D) Aplicar
       if (decision === "nominado" && gstate.nominados.length < 4) {
-        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINADO/A</strong>.`);
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINAD@</strong>.`);
         setGstate({
           ...gstate,
           currentEvaluadoId: undefined,
