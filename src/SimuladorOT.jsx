@@ -2574,7 +2574,7 @@ export default function SimuladorOT() {
             >
               {/* etiqueta corta en móvil, larga en ≥sm */}
               <span className="sm:hidden">Elegir concursantes</span>
-              <span className="hidden sm:inline">👥 Elegir concursantes OT</span>
+              <span className="hidden sm:inline">👥 Elegir Concursantes OT</span>
             </Button>
           )}
           <Button
@@ -2590,9 +2590,9 @@ export default function SimuladorOT() {
       {contestants.length===0 && (
         <Card>
           <CardContent className="p-6 space-y-4">
-            <p className="text-sb text-muted-foreground">Escribe exactamente <strong>18 nombres</strong> (uno por línea) y pulsa <strong>Iniciar</strong>. O bien <strong>elige a tu propio concursante</strong> (¡Asegúrate de dejar espacio en esta lista!)</p>
+            <p className="text-sb text-muted-foreground">Haz click en el Botón <strong>Elegir Concursantes OT</strong> y selecciona a 18 concursantes. (¡Si tenías ya nombres aquí asegúrate de dejar espacio en esta lista antes!)</p>
             <p className="text-sb text-muted-foreground">Puedes también <strong>crear</strong> a tu propio concursante con sus estadísticas propias. Al guardar lo podrás utilizar en este navegador cuando quieras. Si escribes el nombre directamente en esta lista no tendrá estadísticas y podría ser más propenso a la nominación.</p>
-            <p className="text-xs text-muted-foreground">Puedes indicar <strong>género</strong> al final: <code>Nombre - el/elle/ella</code>. Si no lo indicas el género será n/b por defecto.</p>
+            <p className="text-xs text-muted-foreground">El género se escribe para que la Tabla de Recorrido trate a cada concursante por el género que le corresponda. Si no se selecciona un género este </p>
             <Textarea rows={12} value={namesInput} onChange={e=>setNamesInput(e.target.value)} />
             <div className="flex gap-2">
               <Button onClick={iniciar}>▶️ Iniciar</Button>
@@ -2603,6 +2603,8 @@ export default function SimuladorOT() {
           </CardContent>
         </Card>
       )}
+
+      <center><p className="text-xs text-muted-foreground"><strong>Simulador OT (2025)</strong> - Para cualquier duda o sugerencia escríbenos a simuladorot@gmail.com</p></center>
 
       {contestants.length>0 && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
