@@ -2564,7 +2564,7 @@ export default function SimuladorOT() {
         <img
           src="/LogoOT2005_Negro.png"
           alt="Simulador Web de Operación Triunfo"
-          className="h-16 sm:h-20 md:h-[6.75rem] w-auto transition-all duration-300"
+          className="h-auto max-h-14 sm:max-h-20 md:max-h-[6.75rem] w-auto object-contain shrink-0"
         />
 
         <div className="flex gap-2 w-full sm:w-auto">
