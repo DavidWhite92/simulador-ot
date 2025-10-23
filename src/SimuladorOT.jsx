@@ -2564,7 +2564,8 @@ export default function SimuladorOT() {
         <img
           src="/LogoOT2005_Negro.png"
           alt="Simulador Web de Operación Triunfo"
-          className="h-[6.75rem] w-auto" // ajusta tamaño según necesites
+          className="h-16 sm:h-20 md:h-[6.75rem] w-auto transition-all duration-300"
+          style={{ objectFit: "contain" }}
         />
         <div className="flex gap-2">
           <div className="flex gap-2 mb-4">
