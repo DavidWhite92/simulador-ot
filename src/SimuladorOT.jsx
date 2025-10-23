@@ -2604,7 +2604,7 @@ export default function SimuladorOT() {
         </Card>
       )}
 
-      <center><p className="text-xs text-muted-foreground"><strong>Simulador OT (2025)</strong> - Para cualquier duda o sugerencia escríbenos a simuladorot@gmail.com</p></center>
+      <center><p className="text-xs text-muted-foreground"><strong>Simulador OT (2025)</strong> - Para cualquier duda o sugerencia escríbenos a otsimulador@gmail.com</p></center>
 
       {contestants.length>0 && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
