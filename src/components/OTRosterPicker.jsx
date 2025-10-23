@@ -510,6 +510,7 @@ export default function OTRosterPicker({
                   const active = sel.includes(String(p.id));
                   return (
                     <div key={p.id} className="rounded-lg border bg-white shadow-sm overflow-hidden">
+                      {/* Botón que selecciona/deselecciona la tarjeta */}
                       <button
                         type="button"
                         onClick={() => toggle(p.id)}
@@ -520,36 +521,32 @@ export default function OTRosterPicker({
                       >
                         <CardContent className="p-2 text-center">
                           <div className="flex flex-col items-center">
-                            <img
-                              src={p.photo}
-                              alt={p.name}
-                              className="w-[62px] h-[62px] object-cover rounded-md mb-1"
-                            />
+                            <img src={p.photo} alt={p.name} className="w-[62px] h-[62px] object-cover rounded-md mb-1" />
                             <div className="text-sm font-medium truncate">{p.name}</div>
                             {active && <Badge className="mt-1">✓</Badge>}
                           </div>
                         </CardContent>
-
-                        {/* ✅ Botones Editar / Borrar (solo visibles si es Custom) */}
-                        {p.isCustom && (
-                          <div className="flex justify-center gap-2 pb-2">
-                            <Button
-                              variant="outline"
-                              className="h-7 px-2 text-xs"
-                              onClick={(e) => { e.stopPropagation(); startEdit(p); }}
-                            >
-                              Editar
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              className="h-7 px-2 text-xs"
-                              onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
-                            >
-                              Borrar
-                            </Button>
-                          </div>
-                        )}
                       </button>
+
+                      {/* Controles fuera del <button> para evitar nesting */}
+                      {p.isCustom && (
+                        <div className="flex justify-center gap-2 pb-2">
+                          <Button
+                            variant="outline"
+                            className="h-7 px-2 text-xs"
+                            onClick={(e) => { e.stopPropagation(); startEdit(p); }}
+                          >
+                            Editar
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            className="h-7 px-2 text-xs"
+                            onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
+                          >
+                            Borrar
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

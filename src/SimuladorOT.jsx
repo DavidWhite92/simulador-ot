@@ -152,13 +152,13 @@ function performanceModifier(stats, req){
   const S = {
     afinacion: clamp15(stats.afinacion ?? stats.afinación),
     baile:     clamp15(stats.baile),
-    presencia: clamp15(stats.presencia ?? stats["expresión"]),
+    presencia: clamp15(stats.presencia ?? stats["presencia"]),
     emocion:   clamp15(stats.emocion ?? stats.emoción),
   };
   const R = {
     afinacion: clamp15(req.afinacion ?? req.afinación),
     baile:     clamp15(req.baile),
-    presencia: clamp15(req.presencia ?? req["expresión"]),
+    presencia: clamp15(req.presencia ?? req["presencia"]),
     emocion:   clamp15(req.emocion ?? req.emoción),
   };
 
@@ -853,48 +853,53 @@ export default function SimuladorOT() {
       const v = (valor || "").toLowerCase();
       const has = (s) => v.includes(s.toLowerCase());
 
-      // ——— Gala 0 (igual que ya tienes) ———
+      // Gala 0
       if (galaNum === 0) {
-        if (has("eliminad") && has("no entra")) return { bg: "tomato",     fg: "#fff" };
+        if (has("eliminad") && has("no entra")) return { bg: "tomato", fg: "#fff" };
         if (has("salvad") && has("por los profesores") && has("entra")) return { bg: "yellowgreen", fg: "#111" };
-        if (has("salvad") && has("por el público")     && has("entra")) return { bg: "orange",    fg: "#111" };
-        if (has("salvad") && has("por el jurado")      && has("entra")) return { bg: "#fff",      fg: "#111" };
+        if (has("salvad") && has("por el público") && has("entra")) return { bg: "orange", fg: "#111" };
+        if (has("salvad") && has("por el jurado") && has("entra")) return { bg: "#fff", fg: "#111" };
       }
 
-      // ——— G12–G14: 6º/5º/4º Finalista → sienna ———
+      // G12–G14: 6º/5º/4º Finalista
       if ((galaNum === 12 || galaNum === 13 || galaNum === 14) &&
           /\b(6|5|4)(º|ª)?\b/.test(v) && has("finalista")) {
         return { bg: "sienna", fg: "#fff" };
       }
 
-      // ——— G10: Finalista salvado por PROFESORES / COMPAÑEROS con su color ———
-      if (galaNum === 10 && has("finalista") && has("por los profesores")) {
+      // ——— G10 finales específicos ———
+      if (galaNum === 10 && has("finalista") && has("por los profesores"))
         return { bg: "yellowgreen", fg: "#111" };
-      }
-      if (galaNum === 10 && has("finalista") && has("por los compañeros")) {
+      if (galaNum === 10 && has("finalista") && has("por los compañeros"))
         return { bg: "khaki", fg: "#111" };
-      }
 
-      // 2º / 3º Finalista (plata / bronce)
-      if (/\b2(º|ª)?\b/.test(v) && has("finalista")) return { bg: "silver",  fg: "#111" };
-      if (/\b3(º|ª|er)?\b/.test(v) && has("finalista")) return { bg: "#cd7f32", fg: "#fff" }; // bronze
+      // Propuestos/Nominados sin ser finalistas (evita pisar los finalistas)
+      if (has("propuest") && has("nominad") && !has("finalista"))
+        return { bg: "orange", fg: "#111" };
 
-      // Finalista genérico → lightblue
+      // Colores de propuesta con salvado (aplican también si no es G10-finalista)
+      if (has("propuest") && has("por el jurado") && has("profesores")) return { bg: "yellowgreen", fg: "#111" };
+      if (has("propuest") && has("por el jurado") && has("compañeros")) return { bg: "khaki", fg: "#111" };
+      if (has("propuest") && has("nominad"))                              return { bg: "#fef08a", fg: "#111" };
+
+      // 2º / 3º Finalista
+      if (/\b2(º|ª)?\b/.test(v) && has("finalista")) return { bg: "silver", fg: "#111" };
+      if (/\b3(º|ª|er)?\b/.test(v) && has("finalista")) return { bg: "#cd7f32", fg: "#fff" };
+
+      // Finalista genérico
       if (has("finalista")) return { bg: "lightblue", fg: "#111" };
 
-      // Favorito/a → DodgerBlue
+      // Favorito/a
       if (has("favorit") || has("nómada")) return { bg: "DodgerBlue", fg: "#fff" };
 
-      // Resto de reglas…
-      if (has("expulsad"))                                       return { bg: "red",        fg: "#fff" };
-      if (has("propuest") && has("por el jurado") && has("profesores"))  return { bg: "yellowgreen", fg: "#111" };
-      if (has("propuest") && has("por el jurado") && has("compañeros"))  return { bg: "khaki",       fg: "#111" };
-      if (has("propuest") && has("nominad"))                      return { bg: "orange",     fg: "#111" };
-      if (has("duelo"))                                           return { bg: "orange",     fg: "#111" };
-      if (has("ganador"))                                         return { bg: "gold",       fg: "#111" };
-      if (has("salvad") && has("por el jurado"))                  return { bg: "#fff",       fg: "#111" };
+      // Resto
+      if (has("expulsad")) return { bg: "red", fg: "#fff" };
+      if (has("duelo"))     return { bg: "orange", fg: "#111" };
+      if (has("ganador"))   return { bg: "gold", fg: "#111" };
+      if (has("salvad") && has("por el jurado")) return { bg: "#fff", fg: "#111" };
       return { bg: "", fg: "" };
     }
+
 
 
 
@@ -1548,7 +1553,6 @@ export default function SimuladorOT() {
         const vivosIds   = contestants.filter(c => c.status === "active").map(c => c.id);
         const favId      = gstate.favoritoId || null;
         const nomineeIds = favId ? vivosIds.filter(id => id !== favId) : [...vivosIds];
-
         const ordenValoraciones = buildValoracionesOrder(vivosIds, nomineeIds);
 
         setGstate(st => ({
@@ -1563,7 +1567,7 @@ export default function SimuladorOT() {
         }));
         return;
       }
-
+      const DEBUG_PROBS = true; // ponlo en false para silenciar
       const vivos = contestants.filter(c => c.status === "active").map(c => c.id);
       const writeAt = (idx, html) =>
         setGalaLogs(prev => {
@@ -1723,7 +1727,23 @@ export default function SimuladorOT() {
             const stats = contestants.find(c => c.id === id)?.stats;
             const perfMod = performanceModifier(stats, req);
             prob = clamp(prob + perfMod, 0.02, 0.90);
-          } catch(e) {}
+
+            // 🔎 DEBUG: imprime cálculo de probabilidades para este concursante
+            if (DEBUG_PROBS) {
+              console.log(`[DEBUG G${gala}]`, {
+                name: nameOf(id),
+                songTitle,
+                votePct,
+                probBase,
+                perfMod,
+                probFinal: prob,
+                last2: gstate.evalResults.slice(-2).map(r => r.result),
+              });
+            }
+          } catch (e) {
+            // opcional: también puedes ver errores del ajuste de canción
+            if (DEBUG_PROBS) console.warn("DEBUG perfMod error:", e);
+          }
 
           decision = (prob >= 0.5) ? "nominado" : "salvado";
         }
@@ -2194,6 +2214,14 @@ export default function SimuladorOT() {
       history: [...(c.history || []), { gala, evento: "5º finalista (compañeros, G10)" }]
     } : c));
     pushLog(`✅ Más votado por compañeros: <strong>${nameOf(ganador)}</strong> (5º finalista).`);
+    pushLog(`✅ Más votado por compañeros: <strong>${nameOf(ganador)}</strong> (5º finalista).`);
+      setSummaries(s => ({
+        ...s,
+        [10]: {
+          ...(s[10] || { gala: 10 }),
+          salvadoCompanerosId: ganador
+        }
+        }));
 
     // 8) Preparar duelo para G11 (quedan 2 nominados)
     const nominadosRestantes = candidatos.filter(id => id !== ganador);
@@ -2211,9 +2239,23 @@ export default function SimuladorOT() {
       ...s,
       [gala]: { ...(s[gala] || { gala }), salvadoCompanerosId: ganador, votosCompaneros: votos, finalNominees: nominadosRestantes }
     }));
-
+    setSummaries(s => ({
+      ...s,
+      [gala]: {
+        ...(s[gala] || { gala }),
+        g10: {
+          ...(s[gala]?.g10 || {}),
+          quinto: ganador,
+          // los que siguen “vivos” como nominados tras G10 (irán a G11)
+          restantes: candidatos.filter(id => id !== ganador)
+        }
+      }
+    }));
     pushLog(`🟥 Nominados para la próxima gala: <strong>${nameOf(nominadosRestantes[0])}</strong> vs <strong>${nameOf(nominadosRestantes[1])}</strong>.`);
     setCarryNominees(nominadosRestantes);
+
+    setSummaries(prev => rellenarValoracionesReparto(10, prev, contestants));
+
 
     // 9) Cambiar etapa → mostrará el botón "Cerrar gala..."
     setStage("galaCerrada");
@@ -2532,7 +2574,6 @@ export default function SimuladorOT() {
                 </Button>
               )}
             <Button onClick={reiniciar}>🔁 Reiniciar</Button>
-            <Button onClick={onDownloadRecorrido}>⬇️ Descargar</Button>
           </div>
         </div>
       </div>
@@ -2864,7 +2905,11 @@ export default function SimuladorOT() {
           <CardContent className="p-6 space-y-2">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold">Recorrido del concurso</h2>
-              <Badge variant="outline">Provisional hasta Gala 15</Badge>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="secondary" onClick={onDownloadRecorrido}>
+                  ⬇️ Descargar tabla
+                </Button>
+              </div>
             </div>
             <RecorridoTable contestants={contestants} summaries={summaries} />
           </CardContent>
