@@ -2361,95 +2361,98 @@ export default function SimuladorOT() {
 }
 
   
-  function gala10Compas(){
-    if (!gstate) return;
+function gala10Compas(){
+  if (!gstate) return;
 
-    const electores  = contestants.filter(c => c.status === "finalista").map(c => c.id);
-    const candidatos = gstate.nominados; // deben ser 3 ids
-    if (!Array.isArray(candidatos) || candidatos.length !== 3) {
-      pushLog("⚠️ No hay 3 nominados para la votación de compañeros (G10).");
-      return;
-    }
+  const electores  = contestants.filter(c => c.status === "finalista").map(c => c.id);
+  const candidatos = gstate.nominados; // 3 ids
+  if (!Array.isArray(candidatos) || candidatos.length !== 3) {
+    pushLog("⚠️ No hay 3 nominados para la votación de compañeros (G10).");
+    return;
+  }
 
-    // 1) Emisión de votos
-    const votos = [];
-    electores.forEach(v => {
-      const elegido = pickRandom(candidatos, 1)[0];
-      votos.push({ voterId: v, votedId: elegido });
-    });
+  // 1) Emisión de votos
+  const votos = [];
+  electores.forEach(v => {
+    const elegido = pickRandom(candidatos, 1)[0];
+    votos.push({ voterId: v, votedId: elegido });
+  });
 
-    // 2) Lista de votos
-    const votosList = votos.map(v => `<li>${nameOf(v.voterId)} → ${nameOf(v.votedId)}</li>`).join("");
-    pushLog(`🧑‍🤝‍🧑 Votación de compañeros (G10):<ul style="margin:4px 0 0 16px;">${votosList}</ul>`);
+  // 2) Lista de votos
+  const votosList = votos.map(v => `<li>${nameOf(v.voterId)} → ${nameOf(v.votedId)}</li>`).join("");
+  pushLog(`🧑‍🤝‍🧑 Votación de compañeros (G10):<ul style="margin:4px 0 0 16px;">${votosList}</ul>`);
 
-    // 3) Recuento inicial
-    const recuento = { [candidatos[0]]:0, [candidatos[1]]:0, [candidatos[2]]:0 };
-    votos.forEach(v => recuento[v.votedId]++);
-    pushLog(`📊 Recuento de votos (compañeros, G10): ${
-      candidatos.map(id => `<strong>${nameOf(id)}</strong> ${recuento[id]}`).join(" · ")
-    }`);
+  // 3) Recuento inicial
+  const recuento = { [candidatos[0]]:0, [candidatos[1]]:0, [candidatos[2]]:0 };
+  votos.forEach(v => recuento[v.votedId]++);
+  pushLog(`📊 Recuento de votos (compañeros, G10): ${
+    candidatos.map(id => `<strong>${nameOf(id)}</strong> ${recuento[id]}`).join(" · ")
+  }`);
 
-    // 4) Empate en cabeza → privilegio +1 del finalista con mejor nota del jurado en G10
-    let max = Math.max(...candidatos.map(id => recuento[id]));
-    let empatados = candidatos.filter(id => recuento[id] === max);
+  // 4) Empate en cabeza → privilegio +1 si aplica
+  let max = Math.max(...candidatos.map(id => recuento[id]));
+  let empatados = candidatos.filter(id => recuento[id] === max);
+  const huboEmpateInicial = (empatados.length > 1); // 👈
 
-    if (empatados.length > 1) {
-      const sumas = (summaries?.[gala]?.g10?.sumas) ?? gstate?.g10_sumas ?? null;
-      if (sumas) {
-        const electorPrivilegiado = [...electores].sort((a,b) => {
-          const sa = typeof sumas[a] === "number" ? sumas[a] : -Infinity;
-          const sb = typeof sumas[b] === "number" ? sumas[b] : -Infinity;
-          if (sb !== sa) return sb - sa;                // mayor suma primero
-          return String(a).localeCompare(String(b));    // desempate estable
-        })[0];
+  if (huboEmpateInicial) {
+    const sumas = (summaries?.[gala]?.g10?.sumas) ?? gstate?.g10_sumas ?? null;
+    if (sumas) {
+      const electorPrivilegiado = [...electores].sort((a,b) => {
+        const sa = typeof sumas[a] === "number" ? sumas[a] : -Infinity;
+        const sb = typeof sumas[b] === "number" ? sumas[b] : -Infinity;
+        if (sb !== sa) return sb - sa;
+        return String(a).localeCompare(String(b));
+      })[0];
 
-        const suVoto = votos.find(v => v.voterId === electorPrivilegiado)?.votedId;
-        if (suVoto && empatados.includes(suVoto)) {
-          recuento[suVoto] += 1; // +1 SOLO en caso de empate y si su voto está entre los empatados
-          pushLog(`🏅 Desempate: mejor nota del jurado en G10 (${nameOf(electorPrivilegiado)}) otorga +1 a <strong>${nameOf(suVoto)}</strong>.`);
-        }
-        // recalcular por si rompimos el empate
-        max = Math.max(...candidatos.map(id => recuento[id]));
-        empatados = candidatos.filter(id => recuento[id] === max);
+      const suVoto = votos.find(v => v.voterId === electorPrivilegiado)?.votedId;
+      if (suVoto && empatados.includes(suVoto)) {
+        recuento[suVoto] += 1;
+        pushLog(`🏅 Desempate: mejor nota del jurado en G10 (${nameOf(electorPrivilegiado)}) otorga +1 a <strong>${nameOf(suVoto)}</strong>.`);
       }
+      // Recalcular cabeza tras el +1
+      max = Math.max(...candidatos.map(id => recuento[id]));
+      empatados = candidatos.filter(id => recuento[id] === max);
     }
+  }
 
-    // 5) Recuento final
+  // 5) Recuento FINAL → SOLO si hubo empate inicial
+  if (huboEmpateInicial) {
     pushLog(`📊 Recuento final (compañeros, G10): ${
       candidatos.map(id => `<strong>${nameOf(id)}</strong> ${recuento[id]}`).join(" · ")
     }`);
+  }
 
-    // 6) Ganador (si persiste empate, azar entre empatados)
-    const ganador = (empatados.length > 1) ? pickRandom(empatados, 1)[0] : empatados[0];
-    if (!ganador) { pushLog("⚠️ No se pudo determinar el 5º finalista por compañeros."); return; }
+  // 6) Ganador
+  const ganador = (empatados.length > 1) ? pickRandom(empatados, 1)[0] : empatados[0];
+  if (!ganador) { pushLog("⚠️ No se pudo determinar el 5º finalista por compañeros."); return; }
 
-    // 7) Marcar 5º finalista
-    setContestants(prev => prev.map(c => c.id === ganador ? {
-      ...c,
-      status: "finalista",
-      history: [...(c.history || []), { gala, evento: "5º finalista (compañeros, G10)" }]
-    } : c));
-    pushLog(`✅ Más votado por compañeros: <strong>${nameOf(ganador)}</strong> (5º finalista).`);
-    pushLog(`✅ Más votado por compañeros: <strong>${nameOf(ganador)}</strong> (5º finalista).`);
-      setSummaries(s => ({
-        ...s,
-        [10]: {
-          ...(s[10] || { gala: 10 }),
-          salvadoCompanerosId: ganador
-        }
-        }));
+  // 7) Marcar 5º finalista
+  setContestants(prev => prev.map(c => c.id === ganador ? {
+    ...c,
+    status: "finalista",
+    history: [...(c.history || []), { gala, evento: "5º finalista (compañeros, G10)" }]
+  } : c));
 
-    // 8) Preparar duelo para G11 (quedan 2 nominados)
-    const nominadosRestantes = candidatos.filter(id => id !== ganador);
-    const salvadosSet = new Set(gstate.salvados); salvadosSet.add(ganador);
+  // ✅ Solo UNA vez
+  pushLog(`✅ Más votado por compañeros: <strong>${nameOf(ganador)}</strong> (5º finalista).`);
 
-    setGstate({
-      ...gstate,
-      votosCompaneros: votos,
-      salvadoCompanerosId: ganador,
-      nominados: nominadosRestantes,
-      salvados: salvadosSet
-    });
+  setSummaries(s => ({
+    ...s,
+    [10]: { ...(s[10] || { gala: 10 }), salvadoCompanerosId: ganador }
+  }));
+
+  // 8) Preparar duelo para G11
+  const nominadosRestantes = candidatos.filter(id => id !== ganador);
+  const salvadosSet = new Set(gstate.salvados); salvadosSet.add(ganador);
+
+  setGstate({
+    ...gstate,
+    votosCompaneros: votos,
+    salvadoCompanerosId: ganador,
+    nominados: nominadosRestantes,
+    salvados: salvadosSet
+  });
+
 
     setSummaries(s => ({
       ...s,
