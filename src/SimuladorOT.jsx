@@ -58,6 +58,19 @@ function parseSongsText(txt) {
     });
 }
 
+function getSongMetaFor(title, songsMeta){
+  const t = (title || "").trim();
+  if (!t || !songsMeta) return null;
+  const exact = songsMeta.exact?.[t];
+  if (exact) return exact;
+  const tNorm = (t.toLowerCase()
+    .normalize("NFD").replace(/\p{Diacritic}/gu, "")
+    .replace(/^["“”«»]+|["“”«»]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim());
+  return songsMeta.norm?.[tNorm] || null;
+}
+
 // === UTILIDADES CANCIONES ====================================================
 const normSong = s =>
   (s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").trim();
@@ -1061,27 +1074,60 @@ export default function SimuladorOT() {
       const remaining = order.length - idx;
       const needDoubt = 4 - doubt.size;
 
+      // ---- PROBABILIDAD EN DUDA BASADA EN CANCIÓN/ESTADÍSTICAS ----
+      const BASE_G0_DOUBT = 0.20;
+      let pDoubt = BASE_G0_DOUBT;
+
+      try {
+        const songTitle = getSongFor(id, summaries, 0);
+        const req = getSongMetaFor(songTitle, songsMeta);
+        const stats = contestants.find(c => c.id === id)?.stats;
+
+        if (stats && req) {
+          const delta = performanceModifier(stats, req);
+          const jitter = (Math.random() * 0.08) - 0.04;
+          pDoubt = Math.max(0.05, Math.min(0.90, BASE_G0_DOUBT + delta + jitter));
+        }
+      } catch {
+        pDoubt = BASE_G0_DOUBT;
+      }
+
+      // --- DEBUG solo consola ---
+      console.debug(
+        `[G0 DEBUG] ${nameOf(id)} | pDoubt=${(pDoubt * 100).toFixed(1)}% | ` +
+        `needDoubt=${needDoubt} | remaining=${remaining}`
+      );
+
+      // --- Decisión ---
       let decision;
       if (needDoubt <= 0)               decision = "entra";
       else if (remaining === needDoubt) decision = "duda";
-      else                              decision = Math.random() < 0.20 ? "duda" : "entra";
+      else                              decision = (Math.random() < pDoubt) ? "duda" : "entra";
 
-      if (decision === "duda") doubt.add(id); else entered.add(id);
+      if (decision === "duda") doubt.add(id);
+      else entered.add(id);
 
       const nextIdx = idx + 1;
 
-      // 1) Actualiza estado (sin logs dentro)
-      setGstate(prev => ({ ...prev, g0: { ...st, entered, doubt, idx: nextIdx } }));
+      // --- Actualiza estado ---
+      setGstate(prev => ({
+        ...prev,
+        g0: { ...st, entered, doubt, idx: nextIdx }
+      }));
 
-      // 2) Escribe logs UNA sola vez
-      if (decision === "duda") pushLog(`⚠️ ${nameOf(id)} queda <em>EN DUDA</em>.`, 0);
-      else                      pushLog(`🎤 ${nameOf(id)} entra directamente a la Academia.`, 0);
+      // --- Log visible (solo resultado) ---
+      if (decision === "duda") {
+        pushLog(`⚠️ ${nameOf(id)} queda <em>EN DUDA</em>.`, 0);
+      } else {
+        pushLog(`🎤 ${nameOf(id)} entra directamente a la Academia.`, 0);
+      }
 
       if (nextIdx >= order.length) {
-        pushLog(`✅ En duda: ${Array.from(doubt).map(nameOf).join(", ")}.`, 0);
+        pushLog(`❓ En duda: ${Array.from(doubt).map(nameOf).join(", ")}.`, 0);
         setStage("g0_profes");
       }
     }
+
 
     function g0_profesSalvan(){
       const st = gstate?.g0; if(!st) return;
