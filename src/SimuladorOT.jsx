@@ -44,6 +44,49 @@ function fmtPct(n){
   return `${n.toFixed(1)}%`;
 }
 
+  // Nominaciones acumuladas HASTA e INCLUYENDO la gala g (0-index)
+  // curList: lista de ids nominados en la gala g si aún no está grabada en summaries
+  function countNomsThrough(id, summaries, g, curList) {
+    const nomIdOf = (it) => (typeof it === "object") ? (it.id ?? it.member ?? it[0]) : it;
+
+    let n = 0;
+    // Galas anteriores
+    for (let k = 0; k < g; k++) {
+      const list =
+        summaries?.[k]?.juradoNominados               // << clave real que usas
+        ?? summaries?.[k]?.[k]?.nominados
+        ?? summaries?.[k]?.nominados
+        ?? [];
+      for (const it of list) if (nomIdOf(it) === id) n++;
+    }
+    // Gala actual (usa curList si te la pasan; si no, lee de summaries)
+    const cur =
+      curList
+      ?? summaries?.[g]?.juradoNominados
+      ?? summaries?.[g]?.[g]?.nominados
+      ?? summaries?.[g]?.nominados
+      ?? [];
+    for (const it of cur) if (nomIdOf(it) === id) n++;
+
+    return n;
+  }
+
+
+  function pickProfSaveByFewestNoms(doubtIds, summaries, galaIndex, curList) {
+    const arr = Array.from(doubtIds);
+    const pairs = arr.map(id => [id, countNomsThrough(id, summaries, galaIndex, curList)]);
+    const minNoms = Math.min(...pairs.map(([, n]) => n));
+    const tied = pairs.filter(([, n]) => n === minNoms).map(([id]) => id);
+    return tied[Math.floor(Math.random() * tied.length)];
+  }
+
+  function pickProfSave(doubtIds, summaries, galaIndex, fallbackFn, curList) {
+    if (galaIndex >= 0 && galaIndex <= 9) {
+      return pickProfSaveByFewestNoms(doubtIds, summaries, galaIndex, curList);
+    }
+    return fallbackFn ? fallbackFn(doubtIds) : Array.from(doubtIds)[0];
+  }
+
 // === CANCIONES ===============================================================
 // const [songs, setSongs] = useState([]);
 
@@ -763,7 +806,12 @@ export default function SimuladorOT() {
 
   const pushLog = (entry, galaNum=gala)=> setGalaLogs(logs=>({...logs,[galaNum]:[...(logs[galaNum]||[]), entry]}));
   const nameOf = (id)=> contestants.find(x=>x.id===id)?.name ?? "?";
-  const nextStageFor = (num) => num<=9? (carryNominees.length===2?"dueloPendiente":"votoPublico") : num===10? (carryNominees.length===2?"dueloPendiente":"gala10_jueces") : num===11?"gala11_publico" : num<=14?"g12_14_publico":"g15_final";
+  const nextStageFor = (num) =>
+    num <= 9   ? (carryNominees.length === 2 ? "dueloPendiente" : "votoPublico")
+  : num === 10 ? (carryNominees.length === 2 ? "dueloPendiente" : "gala10_jueces")  // ✅ vuelve a permitir duelo
+  : num === 11 ? "gala11_publico"
+  : num <= 14 ? "g12_14_publico"
+              : "g15_final";
 
       function prepararNuevaGala(num, list = contestants) {
         // 👇 NUEVO: elegir correctamente quiénes “juegan” en cada gala
@@ -789,7 +837,7 @@ export default function SimuladorOT() {
         });
 
         const activosIds = vivos.map(c => c.id);
-        const nominadosDuelo = (num >= 2 ? [...carryNominees] : []);
+        const nominadosDuelo = (num >= 2 && num <= 10) ? [...carryNominees] : [];
         const repartoBase = buildRepartoParaGala(num, activosIds, nominadosDuelo);
         const reparto = buildRepartoConCanciones({
             galaNum: num,
@@ -1130,20 +1178,52 @@ export default function SimuladorOT() {
 
 
     function g0_profesSalvan(){
-      const st = gstate?.g0; if(!st) return;
+      const st = gstate?.g0; 
+      if (!st) return;
+
       const candidatos = Array.from(st.doubt);
+
       if (candidatos.length !== 4 && candidatos.length !== 3) {
-        pushLog("⚠️ Aún no hay 4 en duda para que decidan los profesores."); return;
+        pushLog("⚠️ Deben estar 4 concursantes en duda para que decidan los profesores.", 0);
+        return;
       }
-      const elegido = pickRandom(candidatos,1)[0];
-      pushLog(`🎓 Profesores salvan a <strong>${nameOf(elegido)}</strong> (entra).`);
+      // --- ELECCIÓN SEGÚN NOMINACIONES ---
+      // Pasamos la lista actual de candidatos como argumento extra (para contar esta gala)
+      const elegido = pickProfSave(
+        candidatos,
+        summaries,
+        0,
+        (ids) => ids[Math.floor(Math.random() * ids.length)],
+        candidatos // 👈 nuevo parámetro: lista actual de en duda
+      );
+
+      // --- DEBUG solo consola ---
+      const debugData = candidatos.map(id => ({
+        id,
+        nombre: nameOf(id),
+        nominaciones: countNomsThrough
+          ? countNomsThrough(id, summaries, 0, candidatos) // 👈 también pasa la lista aquí
+          : countNomsUpTo(id, summaries, 1)
+      }));
+
+
+      console.debug("[G0 DEBUG] Profesores deciden entre:", debugData);
+      console.debug("[G0 DEBUG] => Salvan a:", { id: elegido, nombre: nameOf(elegido) });
+
+      // --- LOG público ---
+      pushLog(`🎓 Profesores salvan a <strong>${nameOf(elegido)}</strong> (entra).`, 0);
+
+      // --- Actualiza estado ---
       setGstate(stAll => {
         const entered = new Set(st.entered); entered.add(elegido);
         const doubt   = new Set(st.doubt);   doubt.delete(elegido);
         return { ...stAll, g0:{ ...st, entered, doubt, profesSaved: elegido } };
       });
-      setStage("g0_publico");
+
+      // --- Siguiente etapa ---
+      setStage(candidatos.length === 4 ? "g0_publico" : "g0_cerrar");
     }
+
 
     function g0_publicoVota(){
       const st = gstate?.g0; if(!st) return;
@@ -1379,8 +1459,16 @@ export default function SimuladorOT() {
 
       setCarryNominees([]);
       setGstate(st => ({ ...st, duelStep: undefined }));
-      setStage(nextStageFor(gala));
-    }
+
+      // 👇 No calcules con carryNominees “viejo”
+      if (gala === 10) {
+        setStage("gala10_jueces");      // pasa directo a puntuar jurado G10
+      } else if (gala <= 9) {
+        setStage("votoPublico");        // flujo normal G1–G9
+      } else {
+        setStage(nextStageFor(gala));   // resto igual
+      }
+    } 
 
 
   // Galas 1–9
@@ -1840,42 +1928,73 @@ export default function SimuladorOT() {
 
 
 
-    function profesoresSalvanUno(){
-        if(!gstate || gstate.nominados.length!==4) return;
+    function profesoresSalvanUno() {
+      if (!gstate || (gstate.nominados || []).length !== 4) return;
 
-        const salvado = pickRandom(gstate.nominados,1)[0];
-        pushLog(`🎓 Profesores salvan a <strong>${nameOf(salvado)}</strong>.`);
+      const cand = [...gstate.nominados];
 
-        const nominados = gstate.nominados.filter(id=>id!==salvado);
-        const salvados  = new Set(gstate.salvados); salvados.add(salvado);
+      // En G10: contar nominaciones solo hasta la Gala 9 (sin incluir la actual)
+      const countUntil = (gala === 10) ? 9 : gala;
+      const curList    = (gala === 10) ? undefined : cand;
 
-        setGstate({...gstate, profesorSalvoId: salvado, nominados, salvados});
+      const salvado = pickProfSave(
+        cand,
+        summaries,
+        countUntil,
+        (ids) => ids[Math.floor(Math.random() * ids.length)],
+        curList
+      );
 
-        // 1) Guardar S de la gala con el "profesorSalvoId"
-        setSummaries(s => ({
+      // --- DEBUG visible siempre ---
+      const debugData = cand.map(id => ({
+        id,
+        nombre: nameOf(id),
+        nominaciones: countNomsThrough(id, summaries, countUntil, curList)
+      }));
+
+      const etiqueta = (gala === 10)
+        ? `[G10 DEBUG] Profesores (criterio: menos nominaciones hasta G9)`
+        : `[G${gala} DEBUG] Profesores deciden entre:`;
+
+      console.group(etiqueta);
+      console.table(debugData);
+      console.log(`=> Salvan a:`, { id: salvado, nombre: nameOf(salvado) });
+      console.groupEnd();
+
+      // Log normal en simulador
+      pushLog(`🎓 Profesores salvan a <strong>${nameOf(salvado)}</strong>.`);
+
+      const nominados = cand.filter(id => id !== salvado);
+      const salvados  = new Set(gstate.salvados); salvados.add(salvado);
+
+      setGstate({ ...gstate, profesorSalvoId: salvado, nominados, salvados });
+
+      setSummaries(s => ({
+        ...s,
+        [gala]: { ...(s[gala] || { gala }), profesorSalvoId: salvado, juradoNominados: s[gala]?.juradoNominados || cand }
+      }));
+
+      setSummaries(s => {
+        const Sact = {
           ...s,
-          [gala]: { ...(s[gala] || { gala }), profesorSalvoId: salvado, juradoNominados: s[gala]?.juradoNominados || gstate.nominados }
-        }));
+          [gala]: {
+            ...(s[gala] || { gala }),
+            profesorSalvoId: salvado,
+            juradoNominados: s[gala]?.juradoNominados || cand,
+            top3Ids: s[gala]?.top3Ids || [],
+            top3Pct: s[gala]?.top3Pct || [],
+            duelSaved: s[gala]?.duelSaved,
+            [gala]: s[gala]?.[gala] || {}
+          }
+        };
+        return rellenarValoracionesReparto(gala, Sact, contestants);
+      });
 
-        // 2) 💡 Recalcular la tabla de reparto de esta gala
-        setSummaries(s => {
-          const Sact = {
-            ...s,
-            [gala]: {
-              ...(s[gala] || { gala }),
-              profesorSalvoId: salvado,
-              juradoNominados: s[gala]?.juradoNominados || gstate.nominados,
-              top3Ids: s[gala]?.top3Ids || [],   // 👈 también aquí
-              top3Pct: s[gala]?.top3Pct || [],
-              duelSaved: s[gala]?.duelSaved,
-              [gala]: s[gala]?.[gala] || {}
-            }
-          };
-          return rellenarValoracionesReparto(gala, Sact, contestants);
-        });
+      setStage("companerosVotan");
+    }
 
-        setStage("companerosVotan");
-      }
+
+
 
   
   function companerosVotan(){
@@ -2189,7 +2308,58 @@ export default function SimuladorOT() {
       setStage("gala10_profes");
     }
 
-  function gala10Profes(){ if(!gstate || !gstate.nominados || gstate.nominados.length!==4) return; const salvado=pickRandom(gstate.nominados,1)[0]; setContestants(prev=>prev.map(c=>c.id===salvado?{...c,status:"finalista",history:[...c.history,{gala,evento:"4º finalista (profes, G10)"}]}:c)); pushLog(`🎓 Profesores eligen 4º finalista (G10): <strong>${nameOf(salvado)}</strong>.`); const restantes=gstate.nominados.filter(id=>id!==salvado); setGstate({...gstate, nominados:restantes, profesorSalvoId:salvado}); setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), g10:{ ...(s[gala]?.g10||{}), cuarto:salvado, restantes } }})); setStage("gala10_compas"); }
+  function gala10Profes() {
+  if (!gstate || !gstate.nominados || gstate.nominados.length !== 4) return;
+
+  const cand = [...gstate.nominados];
+
+  // 👉 En G10: contar nominaciones SOLO hasta la Gala 9, sin incluir la lista actual
+    const countUntil = 9;
+    const curList = undefined; // deja que cuente la G9 desde summaries
+
+  // Menos nominaciones acumuladas (desempate aleatorio)
+  const salvado = pickProfSave(
+    cand,
+    summaries,
+    countUntil,
+    (ids) => ids[Math.floor(Math.random() * ids.length)],
+    curList
+  );
+
+  // --- DEBUG visible ---
+  const debugData = cand.map(id => ({
+    id,
+    nombre: nameOf(id),
+    nominaciones: countNomsThrough(id, summaries, countUntil, curList)
+  }));
+  console.group("[G10 DEBUG] Profesores (menos nominaciones hasta G9)");
+  console.table(debugData);
+  console.log("=> 4º finalista (profes):", { id: salvado, nombre: nameOf(salvado) });
+  console.groupEnd();
+
+  // Estado y logs
+  setContestants(prev => prev.map(c =>
+    c.id === salvado
+      ? { ...c, status: "finalista", history: [...c.history, { gala, evento: "4º finalista (profes, G10)" }] }
+      : c
+  ));
+
+  pushLog(`🎓 Profesores eligen 4º finalista (G10): <strong>${nameOf(salvado)}</strong>.`);
+
+  const restantes = cand.filter(id => id !== salvado);
+  setGstate({ ...gstate, nominados: restantes, profesorSalvoId: salvado });
+
+  setSummaries(s => ({
+    ...s,
+    [gala]: {
+      ...(s[gala] || { gala }),
+      g10: { ...(s[gala]?.g10 || {}), cuarto: salvado, restantes }
+    }
+  }));
+
+  setStage("gala10_compas");
+}
+
   
   function gala10Compas(){
     if (!gstate) return;

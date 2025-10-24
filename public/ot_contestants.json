@@ -175,7 +175,7 @@
   { "id": "davezulueta", "name": "Dave", "gender": "m", "photo": "/ot_photos/OT2018/Dave.gif", "stats": { "afinacion": 7, "baile": 6, "presencia": 6, "emocion": 9 } },
   { "id": "joangarrido", "name": "Joan Garrido", "gender": "m", "photo": "/ot_photos/OT2018/Joan Garrido.gif", "stats": { "afinacion": 8, "baile": 7, "presencia": 8, "emocion": 8 } },
   { "id": "africaadalia", "name": "África", "gender": "f", "photo": "/ot_photos/OT2018/Africa.gif", "stats": { "afinacion": 10, "baile": 9, "presencia": 9, "emocion": 8 } },
-  { "id": "alfonsolacruz", "name": "Alfonso 'La Cruz'", "gender": "M", "photo": "/ot_photos/OT2018/Alfonso.gif", "stats": { "afinacion": 8, "baile": 10, "presencia": 7, "emocion": 7 } },
+  { "id": "alfonsolacruz", "name": "Alfonso 'La Cruz'", "gender": "m", "photo": "/ot_photos/OT2018/Alfonso.gif", "stats": { "afinacion": 8, "baile": 10, "presencia": 7, "emocion": 7 } },
   { "id": "rodrigoblanco", "name": "Rodrigo", "gender": "m", "photo": "/ot_photos/OT2018/Rodrigo.gif", "stats": { "afinacion": 8, "baile": 8, "presencia": 7, "emocion": 8 } },
   { "id": "luismas", "name": "Luis Mas", "gender": "m", "photo": "/ot_photos/OT2018/Luis Mas.gif", "stats": { "afinacion": 4, "baile": 7, "presencia": 6, "emocion": 3 } },
   { "id": "nia", "name": "NIA", "gender": "f", "photo": "/ot_photos/OT2020/Nia.gif", "stats": { "afinacion": 12, "baile": 13, "presencia": 11, "emocion": 11 } },
