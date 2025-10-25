@@ -1687,6 +1687,14 @@ export default function SimuladorOT() {
     function evaluarSiguientePorJurado(){
       if (!gstate) return;
 
+      const sufOfId = (id) => {
+      const g = contestants.find(x => x.id === id)?.gender || "e";
+      return g === "m" ? "o" : g === "f" ? "a" : "e";
+    };
+    const NOM = (id) => `NOMINAD${sufOfId(id).toUpperCase()}`;   // para logs en MAYÚSCULAS
+    // (si lo prefieres en capitalización normal, usa: `Nominad${sufOfId(id)}`)
+
+
       // 1) Construir orden al entrar al jurado
       if (!gstate.evaluacionOrden || gstate.evaluacionOrden.length === 0) {
         const vivosIds   = contestants.filter(c => c.status === "active").map(c => c.id);
@@ -1760,7 +1768,7 @@ export default function SimuladorOT() {
       // (a) 3ª valoración y aún 0 nominados → forzar NOMINADO
       const evIndex = gstate.evalResults.length; // 0,1,2... (2 == tercera)
       if (gala === 9 && evIndex === 2 && gstate.nominados.length === 0) {
-        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINAD@</strong>.`);
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>${NOM(id)}</strong>.`);
         setGstate({
           ...gstate,
           currentEvaluadoId: undefined,
@@ -1775,7 +1783,7 @@ export default function SimuladorOT() {
 
       // (b) Quedan 4 por evaluar y faltan ≥3 nominados → forzar NOMINADO ahora
       if (gala === 9 && remaining === 4 && needed >= 3) {
-        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINAD@</strong>.`);
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>${NOM(id)}</strong>.`);
         setGstate({
           ...gstate,
           currentEvaluadoId: undefined,
@@ -1791,7 +1799,7 @@ export default function SimuladorOT() {
 
       // 3A-bis) Si quedan 3 y faltan ≥2 → nomina YA (evita pedir 2 en las dos últimas)
       if (remaining === 3 && needed >= 2) {
-        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINAD@</strong>.`);
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>${NOM(id)}</strong>.`);
         setGstate({
           ...gstate,
           currentEvaluadoId: undefined,
@@ -1906,7 +1914,7 @@ export default function SimuladorOT() {
 
       // 3D) Aplicar
       if (decision === "nominado" && gstate.nominados.length < 4) {
-        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>NOMINAD@</strong>.`);
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>${NOM(id)}</strong>.`);
         setGstate({
           ...gstate,
           currentEvaluadoId: undefined,
@@ -2992,44 +3000,40 @@ function gala10Compas(){
                           </div>
 
                           {/* === Etiqueta de estado con Nominad@ incluido === */}
-                            {(() => {
-                              const isNom = Array.isArray(carryNominees) && carryNominees.includes(c.id);
-                              const isFav = c.id === favId; // 💙 Favorito/a actual
+                          {(() => {
+                            const isNom = Array.isArray(carryNominees) && carryNominees.includes(c.id);
+                            const isFav = c.id === favId;
+                            const s = suf(c.gender || "e"); // ← o/a/e
 
-                              const labelText = isFav
-                                ? "Favorit@"
-                                : isNom
-                                ? "Nominad@"
-                                : c.status === "active"
-                                ? "Salvad@"
-                                : c.status === "finalista"
-                                ? "Finalista"
-                                : c.status === "ganador"
-                                ? "Ganador/a"
-                                : "Eliminad@";
+                            const labelText =
+                              isFav ? `Favorit${s}` :
+                              isNom ? `Nominad${s}` :
+                              c.status === "active" ? `Salvad${s}` :
+                              c.status === "finalista" ? "Finalista" :
+                              c.status === "ganador"
+                                ? (c.gender === "f" ? "Ganadora" : c.gender === "e" ? "Ganadore" : "Ganador")
+                                : `Eliminad${s}`;
 
-                              const labelClass = isFav
-                                ? "bg-blue-500 text-white"                    // 💙 Favorit@
-                                : isNom
-                                ? "bg-orange-500 text-white"                  // 🔶 Nominad@
-                                : c.status === "active"
-                                ? "bg-white text-black border border-gray-300"
-                                : c.status === "eliminado"
-                                ? "bg-red-600 text-white"
-                                : c.status === "finalista"
-                                ? "bg-black text-yellow-300"
-                                : c.status === "ganador"
-                                ? "bg-yellow-300 text-black"
-                                : "bg-gray-300 text-black";
+                            const labelClass = isFav
+                              ? "bg-blue-500 text-white"
+                              : isNom
+                              ? "bg-orange-500 text-white"
+                              : c.status === "active"
+                              ? "bg-white text-black border border-gray-300"
+                              : c.status === "eliminado"
+                              ? "bg-red-600 text-white"
+                              : c.status === "finalista"
+                              ? "bg-sky-200 text-black"
+                              : c.status === "ganador"
+                              ? "bg-yellow-300 text-black font-bold"   // 🟡 Ganador (amarillo con texto negro)
+                              : "bg-gray-200 text-black";
 
-                              return (
-                                <span
-                                  className={`mt-1 px-2 py-[2px] text-[11px] font-semibold rounded-full ${labelClass}`}
-                                >
-                                  {labelText}
-                                </span>
-                              );
-                            })()}
+                            return (
+                              <span className={`px-2 py-0.5 rounded-full text-[11px] ${labelClass}`}>
+                                {labelText}
+                              </span>
+                            );
+                          })()}
 
                         </div>
                       ))}
