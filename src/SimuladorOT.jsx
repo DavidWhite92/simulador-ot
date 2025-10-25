@@ -3015,18 +3015,18 @@ function gala10Compas(){
                                 : `Eliminad${s}`;
 
                             const labelClass = isFav
-                              ? "bg-blue-500 text-white"
-                              : isNom
-                              ? "bg-orange-500 text-white"
-                              : c.status === "active"
-                              ? "bg-white text-black border border-gray-300"
-                              : c.status === "eliminado"
-                              ? "bg-red-600 text-white"
-                              : c.status === "finalista"
-                              ? "bg-sky-200 text-black"
-                              : c.status === "ganador"
-                              ? "bg-yellow-300 text-black font-bold"   // 🟡 Ganador (amarillo con texto negro)
-                              : "bg-gray-200 text-black";
+                            ? "bg-blue-500 text-white font-bold"   // 💙 Favorito: azul, texto blanco y negrita
+                            : isNom
+                            ? "bg-orange-500 text-white"
+                            : c.status === "active"
+                            ? "bg-white text-black border border-gray-300"
+                            : c.status === "eliminado"
+                            ? "bg-red-600 text-white"
+                            : c.status === "finalista"
+                            ? "bg-sky-200 text-black"
+                            : c.status === "ganador"
+                            ? "bg-yellow-300 text-black font-bold" // 💛 Ganador: amarillo, texto negro y negrita
+                            : "bg-gray-200 text-black";
 
                             return (
                               <span className={`px-2 py-0.5 rounded-full text-[11px] ${labelClass}`}>
@@ -3072,7 +3072,7 @@ function gala10Compas(){
           {/* Mosaico de fotos en "Estado" */}
           <div className="self-start mt-4 bg-white/80 rounded-xl shadow-sm p-3">
             <h3 className="text-sm font-semibold text-center mb-2">
-              Plantilla de la temporada
+              Concursantes
             </h3>
             <div className="grid grid-cols-6 gap-2 justify-items-center">
               {contestants.map((c) => (

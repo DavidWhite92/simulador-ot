@@ -11,7 +11,7 @@
   { "id": "alejandro", "name": "Alejandro", "gender": "m", "photo": "/ot_photos/OT2001/Alejandro.gif", "stats": { "afinacion": 9, "baile": 8, "presencia": 10, "emocion": 7 } },
   { "id": "juan", "name": "Juan Camus", "gender": "m", "photo": "/ot_photos/OT2001/Juan Camus.gif", "stats": { "afinacion": 1, "baile": 0, "presencia": 1, "emocion": 1 } },
   { "id": "nataliarodriguez", "name": "Natalia", "gender": "f", "photo": "/ot_photos/OT2001/Natalia.gif", "stats": { "afinacion": 7, "baile": 12, "presencia": 11, "emocion": 9 } },
-  { "id": "alex", "name": "Alex", "gender": "m", "photo": "/ot_photos/OT2001/Alex.gif", "stats": { "afinacion": 5, "baile": 10, "presencia": 7, "emocion": 7 } },
+  { "id": "alexcasademunt", "name": "Alex Casademunt", "gender": "m", "photo": "/ot_photos/OT2001/Alex.gif", "stats": { "afinacion": 5, "baile": 10, "presencia": 7, "emocion": 7 } },
   { "id": "javian", "name": "Javián", "gender": "m", "photo": "/ot_photos/OT2001/Javian.gif", "stats": { "afinacion": 4, "baile": 9, "presencia": 8, "emocion": 4 } },
   { "id": "mireia", "name": "Mireia", "gender": "f", "photo": "/ot_photos/OT2001/Mireia.gif", "stats": { "afinacion": 8, "baile": 7, "presencia": 6, "emocion": 7 } },
   { "id": "geno", "name": "Geno", "gender": "f", "photo": "/ot_photos/OT2001/Geno.gif", "stats": { "afinacion": 5, "baile": 9, "presencia": 4, "emocion": 5 } },
