@@ -804,6 +804,11 @@ export default function SimuladorOT() {
 
   const eliminated = useMemo(()=>contestants.filter(c=>c.status==="eliminado"),[contestants]);
 
+    // 👇 Añádelo aquí
+    // Mostrar favorit@ solo cuando esté en summaries (fase 2 ya revelada)
+    const favId = summaries?.[viewGala]?.favoritoId ?? null;
+
+
   const pushLog = (entry, galaNum=gala)=> setGalaLogs(logs=>({...logs,[galaNum]:[...(logs[galaNum]||[]), entry]}));
   const nameOf = (id)=> contestants.find(x=>x.id===id)?.name ?? "?";
   const nextStageFor = (num) =>
@@ -2964,40 +2969,73 @@ function gala10Compas(){
                   <TabsTrigger value="plantilla">👥 Concursantes</TabsTrigger>
                   <TabsTrigger value="historial">🎤 Galas</TabsTrigger>
                 </TabsList>
-                <TabsContent value="plantilla" className="mt-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {contestants.map(c=>(
-                      <motion.div key={c.id} layout initial={{opacity:0,y:10}} animate={{opacity:1,y:0}}>
-                        <Card className="border">
-                          <CardContent className="p-4">
-                            <div className="flex items-center justify-between">
-                              {/* Foto en lugar del nombre (con fallback) */}
-                              <img
-                                src={
-                                  (c.photo && c.photo.trim()) ||
-                                  photoByName.get(norm(c.name)) ||
-                                  "/ot_photos/sinfoto.gif"
-                                }
-                                alt={c.name}
-                                title={c.name}
-                                className={`w-14 h-14 rounded-md object-cover bg-white border transition-all duration-500 ${
-                                  c.status === "eliminado" ? "grayscale opacity-90" : ""
-                                }`}
-                              />
-                              {/* Badge de estado se mantiene igual */}
-                              <div>
-                                {c.status === "active"    && (<Badge variant="secondary">En academia</Badge>)}
-                                {c.status === "eliminado" && (<Badge variant="destructive">Eliminado/a</Badge>)}
-                                {c.status === "finalista" && (<Badge>⭐ Finalista</Badge>)}
-                                {c.status === "ganador"   && (<Badge>🏆 Ganador/a</Badge>)}
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </motion.div>
-                    ))}
-                  </div>
-                </TabsContent>
+                  <TabsContent value="plantilla" className="mt-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+                      {contestants.map((c) => (
+                        <div
+                          key={c.id}
+                          className="flex flex-col items-center gap-1 p-2 rounded-xl bg-white/80 shadow-sm"
+                        >
+                          <img
+                            src={
+                              (c.photo && c.photo.trim()) ||
+                              photoByName.get(norm(c.name)) ||
+                              "/ot_photos/sinfoto.gif"
+                            }
+                            alt={c.name}
+                            className={`w-[62px] h-[62px] object-cover rounded-lg border ${
+                              c.status === "eliminado" ? "grayscale opacity-80" : ""
+                            }`}
+                          />
+                          <div className="text-xs font-medium text-center leading-tight">
+                            {c.name}
+                          </div>
+
+                          {/* === Etiqueta de estado con Nominad@ incluido === */}
+                            {(() => {
+                              const isNom = Array.isArray(carryNominees) && carryNominees.includes(c.id);
+                              const isFav = c.id === favId; // 💙 Favorito/a actual
+
+                              const labelText = isFav
+                                ? "Favorit@"
+                                : isNom
+                                ? "Nominad@"
+                                : c.status === "active"
+                                ? "Salvad@"
+                                : c.status === "finalista"
+                                ? "Finalista"
+                                : c.status === "ganador"
+                                ? "Ganador/a"
+                                : "Eliminad@";
+
+                              const labelClass = isFav
+                                ? "bg-blue-500 text-white"                    // 💙 Favorit@
+                                : isNom
+                                ? "bg-orange-500 text-white"                  // 🔶 Nominad@
+                                : c.status === "active"
+                                ? "bg-white text-black border border-gray-300"
+                                : c.status === "eliminado"
+                                ? "bg-red-600 text-white"
+                                : c.status === "finalista"
+                                ? "bg-black text-yellow-300"
+                                : c.status === "ganador"
+                                ? "bg-yellow-300 text-black"
+                                : "bg-gray-300 text-black";
+
+                              return (
+                                <span
+                                  className={`mt-1 px-2 py-[2px] text-[11px] font-semibold rounded-full ${labelClass}`}
+                                >
+                                  {labelText}
+                                </span>
+                              );
+                            })()}
+
+                        </div>
+                      ))}
+                    </div>
+                  </TabsContent>
+
                 <TabsContent value="historial" className="mt-4 space-y-3">
                   <div className="flex flex-wrap gap-2">
                     {Array.from({length:gala+1},(_,i)=>i).map(g => (
@@ -3027,24 +3065,38 @@ function gala10Compas(){
             </CardContent>
           </Card>
 
-          <div className="space-y-6">
-            <Card>
-              <CardContent className="p-6 space-y-4">
-                <h2 className="text-lg font-semibold">Estado</h2>
-                <div className="space-y-2 text-sm">
-                  <div><Badge variant="outline">Activos</Badge> {active.length}</div>
-                  <div><Badge variant="outline">Eliminados</Badge> {eliminated.length}</div>
-                  <div><Badge variant="outline">Finalistas</Badge> {finalists.length} / 6</div>
-                  {carryNominees.length===2 && gala<=9 && (
-                    <div className="mt-2">
-                      <Badge variant="secondary">🗳️ Nominados en votación</Badge>
-                      <div className="text-xs mt-1">{carryNominees.map(id=>nameOf(id)).join(" vs ")}</div>
-                    </div>
-                  )}
-                </div>
-                <div className="text-xs text-muted-foreground">Reglas: Favorito solo hasta <strong>Gala 9</strong>. <strong>Gala 10</strong>: jurado puntúa a 7 → top3 finalistas, 4 nominados → profes 4º, compañeros 5º → a <strong>Gala 11</strong> el público elige 6º. <strong>Gala 12–14</strong>: público decide con porcentajes ciegos y duelo en la misma gala. <strong>Gala 15</strong>: final con 3.</div>
-              </CardContent>
-            </Card>
+          {/* Mosaico de fotos en "Estado" */}
+          <div className="self-start mt-4 bg-white/80 rounded-xl shadow-sm p-3">
+            <h3 className="text-sm font-semibold text-center mb-2">
+              Plantilla de la temporada
+            </h3>
+            <div className="grid grid-cols-6 gap-2 justify-items-center">
+              {contestants.map((c) => (
+                <img
+                  key={c.id}
+                  src={
+                    (c.photo && c.photo.trim()) ||
+                    photoByName.get(norm(c.name)) ||
+                    "/ot_photos/sinfoto.gif"
+                  }
+                  alt={c.name}
+                  title={c.name}
+                  className={`
+                    w-14 h-14 object-cover rounded-lg border-4 transition-all
+                    ${
+                      c.status === "ganador"
+                        ? "border-yellow-300" // 🟡 Ganador/a
+                        : Array.isArray(carryNominees) && carryNominees.includes(c.id)
+                        ? "border-orange-500" // 🔶 Nominad@
+                        : c.id === favId
+                        ? "border-blue-500" // 💙 Favorit@
+                        : "border-transparent"
+                    }
+                    ${c.status === "eliminado" ? "grayscale opacity-80" : ""}
+                  `}
+                />
+              ))}
+            </div>
           </div>
         </div>
       )}
