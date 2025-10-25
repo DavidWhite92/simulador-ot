@@ -3280,7 +3280,11 @@ function RecorridoTable({ contestants, summaries }){
       } else {
         cells.push({ text: "—", style: cellStyle("#eee", "#555") });
       }
+    } else {
+      // 👈 Mientras la Gala 0 aún no está cerrada, pinta neutro
+      cells.push({ text: "—", style: cellStyle("#eee", "#555") });
     }
+
 
     for(let g=1; g<=15; g++){
       let text="—", style=cellStyle("#eee","#555");
