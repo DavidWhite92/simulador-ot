@@ -2970,7 +2970,7 @@ function gala10Compas(){
                   <TabsTrigger value="historial">🎤 Galas</TabsTrigger>
                 </TabsList>
                   <TabsContent value="plantilla" className="mt-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+                    <div className="grid grid-cols-2 min-[380px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                       {contestants.map((c) => (
                         <div
                           key={c.id}
