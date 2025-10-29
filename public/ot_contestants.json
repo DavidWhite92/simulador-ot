@@ -81,7 +81,7 @@
   { "id": "vanessagonzalez", "name": "Vanessa", "gender": "f", "photo": "/ot_photos/OT2006/Vanessa.gif", "stats": { "afinacion": 9, "baile": 10, "presencia": 9, "emocion": 9 } },
   { "id": "maytemacanas", "name": "Mayte", "gender": "f", "photo": "/ot_photos/OT2006/Mayte.gif", "stats": { "afinacion": 9, "baile": 9, "presencia": 8, "emocion": 10 } },
   { "id": "mercedesduran", "name": "Mercedes", "gender": "f", "photo": "/ot_photos/OT2006/Mercedes.gif", "stats": { "afinacion": 7, "baile": 10, "presencia": 9, "emocion": 9 } },
-  { "id": "cristinaesteban", "name": "Cristina", "gender": "f", "photo": "/ot_photos/OT2006/Cristina.gif", "stats": { "afinacion": 7, "baile": 8, "presencia": 8, "emocion": 8 } },
+  { "id": "cristinaesteban", "name": "Cristina Esteban", "gender": "f", "photo": "/ot_photos/OT2006/Cristina.gif", "stats": { "afinacion": 7, "baile": 8, "presencia": 8, "emocion": 8 } },
   { "id": "joseantoniovadillo", "name": "José Antonio", "gender": "m", "photo": "/ot_photos/OT2006/Jose Antonio.gif", "stats": { "afinacion": 8, "baile": 8, "presencia": 7, "emocion": 7 } },
   { "id": "xavierdealbert", "name": "Xavier", "gender": "m", "photo": "/ot_photos/OT2006/Xavier.gif", "stats": { "afinacion": 7, "baile": 5, "presencia": 5, "emocion": 6 } },
   { "id": "encarnanavarro", "name": "Encarna", "gender": "f", "photo": "/ot_photos/OT2006/Encarna.gif", "stats": { "afinacion": 7, "baile": 7, "presencia": 7, "emocion": 6 } },

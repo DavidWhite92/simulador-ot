@@ -32,7 +32,7 @@ const withDefaults = (p, idx) => {
     id,
     name: p.name ?? `Concursante ${idx + 1}`,
     gender: p.gender ?? "n", // m/f/n
-    photo: p.photo ?? "/ot_photos/default.jpg",
+    photo: p.photo ?? "/ot_photos/sinfoto.gif",
     edition: deriveEdition(p),
     stats: {
       afinacion: 0,
@@ -244,9 +244,10 @@ export default function OTRosterPicker({
     const validateAndSave = () => {
       setError("");
       const name = form.name.trim();
-      const photo = form.photo.trim();
+      const photoInput = form.photo.trim();
+      const photo = photoInput === "" ? "/ot_photos/sinfoto.gif" : photoInput;
       if (!name) return setError("Pon un nombre.");
-      if (!/(https?:\/\/|\/).+\.(png|gif|jpe?g)$/i.test(photo))
+      if (photoInput && !/(https?:\/\/|\/).+\.(png|gif|jpe?g)$/i.test(photoInput))
         return setError("La foto debe ser un enlace que acabe en .png, .jpg, .jpeg o .gif.");
 
       const base = {
@@ -328,7 +329,7 @@ export default function OTRosterPicker({
                 />
 
                 <label className="block text-sm font-medium">
-                  Foto (URL terminada en .png, .jpg, .jpeg o .gif)
+                  Foto (opcional; URL terminada en .png, .jpg, .jpeg o .gif)
                 </label>
                 <input
                   value={form.photo}
