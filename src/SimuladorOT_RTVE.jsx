@@ -7,6 +7,31 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toPng } from 'html-to-image';
 import OTRosterPicker from "./components/OTRosterPicker";
+import LZString from "lz-string";
+
+// ——— helpers para (de)serializar Sets/Maps ———
+const replacer = (_k, v) => {
+  if (v instanceof Set) return { __type: "Set", data: [...v] };
+  if (v instanceof Map) return { __type: "Map", data: [...v] };
+  return v;
+};
+const reviver = (_k, v) => {
+  if (v && v.__type === "Set") return new Set(v.data || []);
+  if (v && v.__type === "Map") return new Map(v.data || []);
+  return v;
+};
+
+// Empaqueta -> string compacto seguro para URL
+function packState(obj) {
+  const json = JSON.stringify(obj, replacer);
+  return LZString.compressToEncodedURIComponent(json);
+}
+// Desempaqueta <- string
+function unpackState(code) {
+  const json = LZString.decompressFromEncodedURIComponent(code || "");
+  if (!json) throw new Error("Código inválido o corrupto");
+  return JSON.parse(json, reviver);
+}
 
 
 // Utils
@@ -814,6 +839,54 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
   const [songs, setSongs] = useState([]);
   const [songsReady, setSongsReady] = useState(false);
   const [songsMeta, setSongsMeta] = useState({}); // { title -> {afinacion, baile, presencia, emocion} }
+
+    const SAVE_VERSION = 1;
+
+      function buildSavePayload() {
+      // ojo con Maps/Sets: el 'replacer' de arriba los convierte
+      return {
+        v: SAVE_VERSION,
+        mode,            // "telecinco" | "rtve"
+        contestants,     // [{ id, name, gender, photo, stats, status, ... }]
+        gala,
+        viewGala,
+        stage,
+        gstate,          // lleva Sets, lo maneja 'replacer'
+        summaries,       // árbol con reparto, favoritos, nominados, etc.
+        namesInput,      // por si quieres reimprimir la lista inicial
+        songsReady,      // opcional
+      };
+    }
+
+    function applyLoadedState(payload) {
+      if (!payload || payload.v !== SAVE_VERSION) throw new Error("Versión de guardado incompatible");
+
+      // Restaura en este orden para que la UI no parpadee raro:
+      setContestants(payload.contestants || []);
+      setSummaries(payload.summaries || {});    // tabla de recorrido y galas
+      setGstate(payload.gstate || {});          // lleva Sets: ya vienen revividos
+      setNamesInput(payload.namesInput || "");  // si quieres mostrar la lista original
+      setGala(payload.gala ?? 1);
+      setViewGala(payload.viewGala ?? payload.gala ?? 1);
+      setStage(payload.stage || "inicio");
+    }
+
+      useEffect(() => {
+    try {
+      const hash = window.location.hash || "";
+      const m = hash.match(/(?:^#|&)sim=([^&]+)/);
+      const code = m ? decodeURIComponent(m[1]) : null;
+      if (code) {
+        const payload = unpackState(code);
+        applyLoadedState(payload);
+        onModeChange?.(payload.mode || mode);
+      }
+    } catch (e) {
+      console.warn("No se pudo autocargar el código de la URL:", e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
       useEffect(() => {
       const LS_KEY = "ot_custom_contestants";
@@ -2919,7 +2992,48 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         </Card>
       )}
 
+    <Button
+      onClick={() => {
+        try {
+          const payload = buildSavePayload();
+          const code = Math.floor(1000 + Math.random() * 9000).toString(); // 4 cifras
+          const packed = packState(payload);
+          localStorage.setItem("ot_save_" + code, packed);
+
+          navigator.clipboard?.writeText(code);
+          alert("Código guardado y copiado: " + code + "\n\n⚠️ Solo funciona en este dispositivo/navegador.");
+        } catch (e) {
+          alert("Error al guardar: " + e.message);
+        }
+      }}
+    >
+      💾 Guardar
+    </Button>
+
+    <Button
+      variant="outline"
+      onClick={() => {
+        const code = prompt("Introduce el código de tu simulación (4 cifras):");
+        if (!code) return;
+        try {
+          const packed = localStorage.getItem("ot_save_" + code.trim());
+          if (!packed) throw new Error("No existe ese código en este navegador.");
+          const payload = unpackState(packed);
+          applyLoadedState(payload);
+          onModeChange?.(payload.mode || mode);
+          alert("Simulación cargada correctamente.");
+        } catch (e) {
+          alert("Error al cargar: " + e.message);
+        }
+      }}
+    >
+      ⬇️ Cargar
+    </Button>
+
       <center><p className="text-xs text-muted-foreground"><strong>Simulador OT (2025)</strong> - Para cualquier duda o sugerencia escríbenos a otsimulador@gmail.com</p></center>
+
+
+
 
       {contestants.length>0 && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
