@@ -74,8 +74,8 @@ function fmtPct(n){
   function pickManually(ids, multiple = false, labelOfId, title = "Elige") {
     const labels = ids.map((id, i) => `${i + 1}. ${labelOfId(id)}`).join("\n");
     const hint = multiple
-      ? "Introduce índices separados por coma (p.ej. 1,3,4)"
-      : "Introduce un índice (p.ej. 2)";
+      ? "Introduce los números de tus elecciones separados por coma (p.ej. 1,3,4)"
+      : "Introduce el número de tu elección (p.ej. 2)";
     const ans = prompt(`${title}:\n${labels}\n\n${hint}`);
     if (!ans) return multiple ? [] : null;
 
@@ -3541,49 +3541,72 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
       </div>
 
 
-      {contestants.length===0 && (
-        <Card>
-          <CardContent className="p-6 space-y-4">
-            <p className="text-sb text-muted-foreground">Haz click en el Botón <strong>Elegir Concursantes OT</strong> y selecciona a 18 concursantes. (¡Si tenías ya nombres aquí asegúrate de dejar espacio en esta lista antes!)</p>
-            <p className="text-sb text-muted-foreground">Puedes también <strong>crear</strong> a tu propio concursante con sus estadísticas propias. Al guardar lo podrás utilizar en este navegador cuando quieras. Si escribes el nombre directamente en esta lista no tendrá estadísticas y podría ser más propenso a la nominación.</p>
-            <p className="text-xs text-muted-foreground">El género se escribe para que la Tabla de Recorrido trate a cada concursante por el género que le corresponda. Si no se selecciona un género este </p>
-            <Textarea rows={12} value={namesInput} onChange={e=>setNamesInput(e.target.value)} />
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Button onClick={iniciar}>▶️ Iniciar</Button>
-                  <Button variant="outline" onClick={clearTypedList}>Limpiar lista</Button>
-                </div>
-                  <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={manual}
-                    onChange={(e) => setManual(e.target.checked)}
-                  />
-                  Modo manual
-                </label>
-                <div className="ml-auto">
-                  <select
-                    className="border rounded-md px-2 py-1 text-sm bg-white"
-                    value={mode}
-                    onChange={(e) => onModeChange?.(e.target.value)}
-                  >
-                    <option value="telecinco">OT (Telecinco, 2001–2006)</option>
-                    <option value="rtve">OT (RTVE, 2017–2020)</option>
-                  </select>
-                </div>
-              </div>
-          </CardContent>
-        </Card>
-      )}
+    {contestants.length === 0 && (
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <p className="text-sb text-muted-foreground">
+            Haz click en el Botón <strong>Elegir Concursantes OT</strong> y selecciona a 18 concursantes.
+            (¡Si tenías ya nombres aquí asegúrate de dejar espacio en esta lista antes!)
+          </p>
+          <p className="text-sb text-muted-foreground">
+            Puedes también <strong>crear</strong> a tu propio concursante con sus estadísticas propias. Al guardar lo podrás
+            utilizar en este navegador cuando quieras. Si escribes el nombre directamente en esta lista no tendrá estadísticas
+            y podría ser más propenso a la nominación.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            El género se escribe para que la Tabla de Recorrido trate a cada concursante por el género que le corresponda.
+            Si no se selecciona un género este
+          </p>
 
-  <button
-    onClick={() => setManual(m => !m)}
-    className={`fixed bottom-4 right-4 px-3 py-2 rounded-full shadow
-                ${manual ? "bg-emerald-600 text-white" : "bg-neutral-200"}`}
-    title="Alternar modo manual"
-  >
-    {manual ? "Manual: ON" : "Manual: OFF"}
-  </button>
+          <Textarea rows={12} value={namesInput} onChange={(e) => setNamesInput(e.target.value)} />
+
+          {/* 🧩 Barra de acciones responsive */}
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            {/* Fila 1: botones principales */}
+            <div className="flex w-full gap-2 sm:w-auto">
+              <Button onClick={iniciar}>▶️ Iniciar</Button>
+              <Button variant="outline" onClick={clearTypedList}>Limpiar lista</Button>
+            </div>
+
+            {/* Fila 2: modo manual + selector */}
+            <div className="flex w-full items-center gap-3 sm:w-auto sm:ml-auto">
+              <label className="flex items-center gap-2 text-sm whitespace-nowrap">
+                <input
+                  type="checkbox"
+                  checked={manual}
+                  onChange={(e) => setManual(e.target.checked)}
+                  className="h-5 w-5 sm:h-4 sm:w-4"
+                />
+                Modo manual
+              </label>
+
+              {/* Selector de modo */}
+              <div className="min-w-0 flex-1 sm:flex-none">
+                <select
+                  className="w-full border rounded-md px-2 py-1 text-sm bg-white"
+                  value={mode}
+                  onChange={(e) => onModeChange?.(e.target.value)}
+                >
+                  <option value="telecinco">OT (Telecinco, 2001–2011)</option>
+                  <option value="rtve">OT (RTVE, 2017–2020)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )}
+
+    {/* 🔘 Botón flotante para alternar modo manual (sigue igual) */}
+    <button
+      onClick={() => setManual((m) => !m)}
+      className={`fixed bottom-4 right-4 px-3 py-2 rounded-full shadow transition 
+                  ${manual ? "bg-emerald-600 text-white" : "bg-neutral-200"}`}
+      title="Alternar modo manual"
+    >
+      {manual ? "Manual: ON" : "Manual: OFF"}
+    </button>
+
 
     <Button
       onClick={() => {
