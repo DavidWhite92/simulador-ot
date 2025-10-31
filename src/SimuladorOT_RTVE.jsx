@@ -69,6 +69,29 @@ function fmtPct(n){
   return `${n.toFixed(1)}%`;
 }
 
+  // pickManually(ids, multiple=false, labelOfId, title?)
+  // multiple=false -> 1 selección; multiple=true -> varias (separadas por coma)
+  function pickManually(ids, multiple = false, labelOfId, title = "Elige") {
+    const labels = ids.map((id, i) => `${i + 1}. ${labelOfId(id)}`).join("\n");
+    const hint = multiple
+      ? "Introduce índices separados por coma (p.ej. 1,3,4)"
+      : "Introduce un índice (p.ej. 2)";
+    const ans = prompt(`${title}:\n${labels}\n\n${hint}`);
+    if (!ans) return multiple ? [] : null;
+
+    const idxs = ans
+      .split(",")
+      .map((s) => parseInt(s.trim(), 10) - 1)
+      .filter((n) => !isNaN(n) && n >= 0 && n < ids.length);
+
+    return multiple
+      ? Array.from(new Set(idxs)).map((i) => ids[i])
+      : ids[idxs[0]] ?? null;
+  }
+
+  const nameOf = (id) => contestants.find(c=>c.id===id)?.name || String(id); // ya la tienes en ambos
+
+
   // Nominaciones acumuladas HASTA e INCLUYENDO la gala g (0-index)
   // curList: lista de ids nominados en la gala g si aún no está grabada en summaries
   function countNomsThrough(id, summaries, g, curList) {
@@ -760,6 +783,18 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
   const [stage, setStage] = useState("inicio");
   const [gstate, setGstate] = useState({});
   const [summaries, setSummaries] = useState({});
+  // ✅ Estado persistente para el modo manual (usará localStorage)
+  const [manual, setManual] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("ot_manual") || "false");
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem("ot_manual", JSON.stringify(manual));
+  }, [manual]);
   const [testResults, setTestResults] = useState([]);
   const [photoByName, setPhotoByName] = useState(new Map());
   const [route, setRoute] = useState("home");           // "home" | "selector"
@@ -855,6 +890,7 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         summaries,       // árbol con reparto, favoritos, nominados, etc.
         namesInput,      // por si quieres reimprimir la lista inicial
         songsReady,      // opcional
+        manual,
       };
     }
 
@@ -869,6 +905,7 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
       setGala(payload.gala ?? 1);
       setViewGala(payload.viewGala ?? payload.gala ?? 1);
       setStage(payload.stage || "inicio");
+      if (typeof payload.manual === "boolean") setManual(payload.manual);
     }
 
       useEffect(() => {
@@ -1364,141 +1401,216 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
       pushLog("🎬 El jurado decide quién entra y quién queda en duda.", 0);
     }
 
-    function g0_revealNext() {
-      const st = gstate?.g0;
-      if (!st) { pushLog("⚠️ Prepara primero la Gala 0.", 0); return; }
+  function g0_revealNext() {
+    const st = gstate?.g0;
+    if (!st) { pushLog("⚠️ Prepara primero la Gala 0.", 0); return; }
 
-      const { order, idx } = st;
-      if (!order || order.length === 0) { pushLog("⚠️ No hay orden de evaluación para la Gala 0.", 0); return; }
-      if (idx >= order.length) {
-        pushLog("ℹ️ Ya se valoró a todo el mundo.", 0);
+    // ====== MODO MANUAL: elegir directamente los 4 "en duda" ======
+    if (manual) {
+      const vivos = contestants.filter(c => (c.status ?? "active") !== "eliminado" && (c.status ?? "active") !== "expulsado");
+      const ids   = vivos.map(c => c.id);
+
+      // Si ya hay 4 en duda, pasa a profes
+      if (Array.isArray(st.doubt) && st.doubt.length === 4) {
+        pushLog(`ℹ️ Ya hay 4 en duda: ${st.doubt.map(nameOf).join(" · ")}.`, 0);
         setStage("g0_profes");
-        setGstate(prev => ({ ...prev, g0: { ...st, idx: order.length } }));
         return;
       }
 
-      const id        = order[idx];
-      const entered   = new Set(st.entered);
-      const doubt     = new Set(st.doubt);
-      const remaining = order.length - idx;
-      const needDoubt = 4 - doubt.size;
+      // (opcional) puedes quitar este log si ya no lo quieres
+      pushLog("🔎 Elige los 4 concursantes ‘en duda’.", 0);
 
-      // ---- PROBABILIDAD EN DUDA BASADA EN CANCIÓN/ESTADÍSTICAS ----
-      const BASE_G0_DOUBT = 0.20;
-      let pDoubt = BASE_G0_DOUBT;
+      // ⬇️ CAMBIO: añade el título al prompt
+      const elegidos = pickManually(ids, true, nameOf, "Elige 4 en duda")?.slice(0, 4);
 
-      try {
-        const songTitle = getSongFor(id, summaries, 0);
-        const req = getSongMetaFor(songTitle, songsMeta);
-        const stats = contestants.find(c => c.id === id)?.stats;
+      if (!elegidos || elegidos.length !== 4) { alert("Debes elegir exactamente 4."); return; }
 
-        if (stats && req) {
-          const delta = performanceModifier(stats, req);
-          const jitter = (Math.random() * 0.08) - 0.04;
-          pDoubt = Math.max(0.05, Math.min(0.90, BASE_G0_DOUBT + delta + jitter));
-        }
-      } catch {
-        pDoubt = BASE_G0_DOUBT;
-      }
+      const doubt   = new Set(elegidos);
+      const entered = new Set(ids.filter(id => !doubt.has(id)));
 
-      // --- DEBUG solo consola ---
-      console.debug(
-        `[G0 DEBUG] ${nameOf(id)} | pDoubt=${(pDoubt * 100).toFixed(1)}% | ` +
-        `needDoubt=${needDoubt} | remaining=${remaining}`
-      );
+      pushLog(`🟧 En duda (G0): ${elegidos.map(nameOf).join(" · ")}.`, 0);
 
-      // --- Decisión ---
-      let decision;
-      if (needDoubt <= 0)               decision = "entra";
-      else if (remaining === needDoubt) decision = "duda";
-      else                              decision = (Math.random() < pDoubt) ? "duda" : "entra";
-
-      if (decision === "duda") doubt.add(id);
-      else entered.add(id);
-
-      const nextIdx = idx + 1;
-
-      // --- Actualiza estado ---
+      // Guarda estado G0 (reemplaza el flujo iterativo)
       setGstate(prev => ({
         ...prev,
-        g0: { ...st, entered, doubt, idx: nextIdx }
+        g0: {
+          ...(prev?.g0 || {}),
+          order: ids,              // opcional
+          idx: ids.length,         // marca como “completado”
+          entered,
+          doubt,
+          profesSaved: null,
+          public: null
+        }
       }));
 
-      // --- Log visible (solo resultado) ---
-      if (decision === "duda") {
-        pushLog(`⚠️ ${nameOf(id)} queda <em>EN DUDA</em>.`, 0);
-      } else {
-        pushLog(`🎤 ${nameOf(id)} entra directamente a la Academia.`, 0);
-      }
-
-      if (nextIdx >= order.length) {
-        pushLog(`❓ En duda: ${Array.from(doubt).map(nameOf).join(", ")}.`, 0);
-        setStage("g0_profes");
-      }
+      // Pasa a Profes
+      setStage("g0_profes");
+      return;
     }
 
+    // ====== MODO AUTOMÁTICO (tu flujo tal cual) ======
+    const { order, idx } = st;
+    if (!order || order.length === 0) { pushLog("⚠️ No hay orden de evaluación para la Gala 0.", 0); return; }
+    if (idx >= order.length) {
+      pushLog("ℹ️ Ya se valoró a todo el mundo.", 0);
+      setStage("g0_profes");
+      setGstate(prev => ({ ...prev, g0: { ...st, idx: order.length } }));
+      return;
+    }
 
-    function g0_profesSalvan(){
-      const st = gstate?.g0; 
+    const id        = order[idx];
+    const entered   = new Set(st.entered);
+    const doubt     = new Set(st.doubt);
+    const remaining = order.length - idx;
+    const needDoubt = 4 - doubt.size;
+
+    const BASE_G0_DOUBT = 0.20;
+    let pDoubt = BASE_G0_DOUBT;
+    try {
+      const songTitle = getSongFor(id, summaries, 0);
+      const req = getSongMetaFor(songTitle, songsMeta);
+      const stats = contestants.find(c => c.id === id)?.stats;
+      if (stats && req) {
+        const delta = performanceModifier(stats, req);
+        const jitter = (Math.random() * 0.08) - 0.04;
+        pDoubt = Math.max(0.05, Math.min(0.90, BASE_G0_DOUBT + delta + jitter));
+      }
+    } catch {
+      pDoubt = BASE_G0_DOUBT;
+    }
+
+    let decision;
+    if (needDoubt <= 0)               decision = "entra";
+    else if (remaining === needDoubt) decision = "duda";
+    else                              decision = (Math.random() < pDoubt) ? "duda" : "entra";
+
+    if (decision === "duda") doubt.add(id);
+    else entered.add(id);
+
+    const nextIdx = idx + 1;
+    setGstate(prev => ({ ...prev, g0: { ...st, entered, doubt, idx: nextIdx } }));
+
+    if (decision === "duda") pushLog(`⚠️ ${nameOf(id)} queda <em>EN DUDA</em>.`, 0);
+    else                     pushLog(`🎤 ${nameOf(id)} entra directamente a la Academia.`, 0);
+
+    if (nextIdx >= order.length) {
+      pushLog(`❓ En duda: ${Array.from(doubt).map(nameOf).join(", ")}.`, 0);
+      setStage("g0_profes");
+    }
+  }
+
+
+    function g0_profesSalvan() {
+      const st = gstate?.g0;
       if (!st) return;
 
-      const candidatos = Array.from(st.doubt);
+      const candidatos = Array.from(st.doubt || []);
 
+      // ====== MODO MANUAL: profes eligen 1 de los (4 o 3) en duda ======
+      if (manual) {
+        if (candidatos.length !== 4 && candidatos.length !== 3) {
+          pushLog("⚠️ Deben estar 4 concursantes en duda para que decidan los profesores.", 0);
+          return;
+        }
+
+        const elegido = pickManually(candidatos, false, nameOf, "Elige a quién salvan los profesores");
+        if (!elegido) return;
+
+        pushLog(`🎓 Profesores salvan a <strong>${nameOf(elegido)}</strong> (entra).`, 0);
+
+        setGstate(stAll => {
+          const entered = new Set(st.entered); entered.add(elegido);
+          const doubt   = new Set(st.doubt);   doubt.delete(elegido);
+          return { ...stAll, g0:{ ...st, entered, doubt, profesSaved: elegido } };
+        });
+
+        setStage(candidatos.length === 4 ? "g0_publico" : "g0_cerrar");
+        return;
+      }
+
+      // ====== AUTOMÁTICO (tal cual lo tenías) ======
       if (candidatos.length !== 4 && candidatos.length !== 3) {
         pushLog("⚠️ Deben estar 4 concursantes en duda para que decidan los profesores.", 0);
         return;
       }
-      // --- ELECCIÓN SEGÚN NOMINACIONES ---
-      // Pasamos la lista actual de candidatos como argumento extra (para contar esta gala)
+
       const elegido = pickProfSave(
         candidatos,
         summaries,
         0,
         (ids) => ids[Math.floor(Math.random() * ids.length)],
-        candidatos // 👈 nuevo parámetro: lista actual de en duda
+        candidatos
       );
 
-      // --- DEBUG solo consola ---
       const debugData = candidatos.map(id => ({
         id,
         nombre: nameOf(id),
         nominaciones: countNomsThrough
-          ? countNomsThrough(id, summaries, 0, candidatos) // 👈 también pasa la lista aquí
+          ? countNomsThrough(id, summaries, 0, candidatos)
           : countNomsUpTo(id, summaries, 1)
       }));
-
-
       console.debug("[G0 DEBUG] Profesores deciden entre:", debugData);
       console.debug("[G0 DEBUG] => Salvan a:", { id: elegido, nombre: nameOf(elegido) });
 
-      // --- LOG público ---
       pushLog(`🎓 Profesores salvan a <strong>${nameOf(elegido)}</strong> (entra).`, 0);
 
-      // --- Actualiza estado ---
       setGstate(stAll => {
         const entered = new Set(st.entered); entered.add(elegido);
         const doubt   = new Set(st.doubt);   doubt.delete(elegido);
         return { ...stAll, g0:{ ...st, entered, doubt, profesSaved: elegido } };
       });
 
-      // --- Siguiente etapa ---
       setStage(candidatos.length === 4 ? "g0_publico" : "g0_cerrar");
     }
 
+    function g0_publicoVota() {
+      const st = gstate?.g0; 
+      if (!st) return;
+      const candidatos = Array.from(st.doubt || []);
+      if (candidatos.length !== 3) { pushLog("⚠️ Deben quedar 3 en duda para la votación del público.", 0); return; }
 
-    function g0_publicoVota(){
-      const st = gstate?.g0; if(!st) return;
-      const candidatos = Array.from(st.doubt);
-      if (candidatos.length !== 3) { pushLog("⚠️ Deben quedar 3 en duda para la votación del público."); return; }
+      // ====== MODO MANUAL: público salva 1 (sin porcentajes) ======
+      if (manual) {
+        const winner = pickManually(candidatos, false, nameOf, "Elige a quién salva el público");
+        if (!winner) return;
 
+        const losers = candidatos.filter(id => String(id) !== String(winner));
+
+        pushLog(`🗳️ Público salva (G0) a <strong>${nameOf(winner)}</strong>.`, 0);
+        pushLog(`⛔ Eliminados en Gala 0: ${losers.map(nameOf).join(" · ")}.`, 0);
+
+        // Marcar eliminados y salvado
+        setContestants(prev => prev.map(c => {
+          if (losers.some(id => String(id) === String(c.id))) {
+            return {
+              ...c,
+              status: "eliminado",
+              history: [...(c.history || []), { gala: 0, evento: "Eliminado (Gala 0)" }]
+            };
+          }
+          return c;
+        }));
+
+        setGstate(stAll => {
+          const entered = new Set(st.entered); entered.add(winner);
+          const doubt   = new Set(st.doubt);   candidatos.forEach(id => doubt.delete(id));
+          return { ...stAll, g0: { ...st, entered, doubt, public: { tabla: [], winner, losers } } };
+        });
+
+        setStage("g0_cerrar");
+        return;
+      }
+
+      // ====== AUTOMÁTICO (tu versión con % aleatorios) ======
       const pcts = randomPercentages(3);
       const tabla = candidatos.map((id,i)=>({ id, name: nameOf(id), pct: pcts[i] }))
                               .sort((a,b)=>b.pct-a.pct);
       const winner = tabla[0].id;
       const losers = [tabla[1].id, tabla[2].id];
 
-      pushLog(`🗳️ Público: ${tabla.map(t=>`${t.name} ${fmtPct(t.pct)}`).join(" · ")}.`);
-      pushLog(`✅ Se salva <strong>${nameOf(winner)}</strong>. ❌ Quedan fuera ${tabla.slice(1).map(t=>t.name).join(" y ")}.`);
+      pushLog(`🗳️ Público: ${tabla.map(t=>`${t.name} ${fmtPct(t.pct)}`).join(" · ")}.`, 0);
+      pushLog(`✅ Se salva <strong>${nameOf(winner)}</strong>. ❌ Quedan fuera ${tabla.slice(1).map(t=>t.name).join(" y ")}.`, 0);
 
       setGstate(stAll => {
         const entered = new Set(st.entered); entered.add(winner);
@@ -1508,6 +1620,7 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
 
       setStage("g0_cerrar");
     }
+
 
     function g0_cerrar(){
       const st = gstate?.g0; if(!st){ pushLog("⚠️ Nada que cerrar."); return; }
@@ -1644,9 +1757,111 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
     function dueloRevelar() {
       const pkg = gstate?.duelStep;
       if (!pkg) { pushLog("⚠️ No hay duelo preparado."); return; }
-      const { a, b, pctA, pctB, winner, loser } = pkg;
+      const { a, b, pctA, pctB } = pkg;
 
-      // Paso 3: revelación y efectos (idéntico a tu flujo actual)
+      // ======= 💡 MODO MANUAL: decides quién es expulsado/a =======
+      if (manual) {
+        // Elige al expulsado entre los dos nominados del duelo
+        const expulsado = pickManually([a, b], false, nameOf, "Elige el eliminado de esta gala");
+        if (!expulsado) return;
+
+        const winner = expulsado === a ? b : a;
+        const loser  = expulsado;
+
+        // Aplicar eliminación al concursante perdedor
+        setContestants(prev => prev.map(c => {
+          if (c.id === loser) {
+            return {
+              ...c,
+              status: "eliminado",
+              history: [
+                ...(c.history || []),
+                {
+                  gala,
+                  evento: "Eliminado",
+                  // mantenemos el detalle con los % generados (coincidan o no con tu decisión)
+                  detalle: `${fmtPct(c.id===a?pctA:pctB)} vs ${fmtPct(c.id===b?pctB:pctA)}`
+                }
+              ]
+            };
+          }
+          return c;
+        }));
+
+        pushLog(`🗳️ <strong>${nameOf(winner)}</strong>. ${nameOf(loser)} es eliminado/a. (manual)`);
+
+        // Guardado de duelo + “salvado por público”
+        setSummaries(s => ({
+          ...s,
+          [gala]: {
+            ...(s[gala] || { gala }),
+            duel: { a, b, pctA, pctB, winner },
+            duelSaved: { ...(s[gala]?.duelSaved || {}), [winner]: (winner === a ? pctA : pctB) }
+          }
+        }));
+
+        // Actualiza etiquetas del reparto (igual que en tu código)
+        setSummaries(s => {
+          if (!s[gala] || !s[gala][gala] || !s[gala][gala].reparto) return s;
+          const jurNoms = new Set(s[gala]?.juradoNominados || []);
+          const pctMap  = { [a]: pctA, [b]: pctB };
+
+          const sufOf = (id) => {
+            const g = contestants.find(x => x.id === id)?.gender ?? "e";
+            return g === "m" ? "o" : g === "f" ? "a" : "e";
+          };
+
+          const rep = s[gala][gala].reparto.map(row => {
+            const labels = row.members.map((id) => {
+              if (!id) return "";
+
+              if (id === loser) {
+                const pct = pctMap[id];
+                return `Expulsad${sufOf(id)} por el público (${typeof pct === "number" ? pct.toFixed(2) : "?"}%)`;
+              }
+              if (id === winner) {
+                const pct = pctMap[id];
+                const baseJurado = jurNoms.has(id)
+                  ? `Propuest${sufOf(id)} por el jurado`
+                  : `Salvad${sufOf(id)} por el jurado`;
+                return `Salvad${sufOf(id)} por el público (${typeof pct === "number" ? pct.toFixed(2) : "?"}%) > ${baseJurado}`;
+              }
+              return "";
+            });
+
+            const nonEmpty = labels.filter(Boolean);
+            if (!nonEmpty.length) return row;
+
+            const uniq = [...new Set(nonEmpty)];
+            const valor = (uniq.length === 1)
+              ? uniq[0]
+              : labels.map((v,i)=> (v?`(${i+1}) ${v}`:"")).filter(Boolean).join(" · ");
+
+            return { ...row, valor };
+          });
+
+          return {
+            ...s,
+            [gala]: { ...(s[gala] || { gala }), [gala]: { ...(s[gala]?.[gala] || {}), reparto: rep } }
+          };
+        });
+
+        // Limpieza + transición
+        setCarryNominees([]);
+        setGstate(st => ({ ...st, duelStep: undefined }));
+
+        if (gala <= 9)      setStage("votoPublico");
+        else if (gala === 10) setStage("juradoEvaluando");
+        else if (gala === 11) setStage("g11_jurado");
+        else                 setStage(nextStageFor(gala));
+
+        return; // ⛔ no sigas a la rama automática
+      }
+      // ===== FIN MODO MANUAL =====
+
+      // ======= 💻 MODO AUTOMÁTICO (tu código tal cual) =======
+      const { winner, loser } = pkg;
+
       setContestants(prev => prev.map(c => {
         if (c.id === loser) {
           return {
@@ -1660,7 +1875,6 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
 
       pushLog(`🗳️ <strong>${nameOf(winner)}</strong>. ${nameOf(loser)} es eliminado/a.`);
 
-      // Guardado de duel + “salvado por público” en summaries (igual que hacías)
       setSummaries(s => ({
         ...s,
         [gala]: {
@@ -1670,7 +1884,6 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         }
       }));
 
-      // Etiquetado del reparto (idéntico a tu post-proceso actual)
       setSummaries(s => {
         if (!s[gala] || !s[gala][gala] || !s[gala][gala].reparto) return s;
         const jurNoms = new Set(s[gala]?.juradoNominados || []);
@@ -1689,7 +1902,6 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
               const pct = pctMap[id];
               return `Expulsad${sufOf(id)} por el público (${typeof pct === "number" ? pct.toFixed(2) : "?"}%)`;
             }
-
             if (id === winner) {
               const pct = pctMap[id];
               const baseJurado = jurNoms.has(id)
@@ -1697,7 +1909,6 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
                 : `Salvad${sufOf(id)} por el jurado`;
               return `Salvad${sufOf(id)} por el público (${typeof pct === "number" ? pct.toFixed(2) : "?"}%) > ${baseJurado}`;
             }
-
             return "";
           });
 
@@ -1720,18 +1931,13 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
 
       setCarryNominees([]);
       setGstate(st => ({ ...st, duelStep: undefined }));
-      // 🔁 Transición automática según la gala actual
-      if (gala <= 9) {
-        setStage("votoPublico");
-      } else if (gala === 10) {
-        setStage("juradoEvaluando");      // G10
-      } else if (gala === 11) {
-        setStage("g11_jurado");           // ▶️ NUEVO: pasar a votación de jueces en G11
-      } else {
-        setStage(nextStageFor(gala));
-      }
 
-    } 
+      if (gala <= 9)      setStage("votoPublico");
+      else if (gala === 10) setStage("juradoEvaluando");
+      else if (gala === 11) setStage("g11_jurado");
+      else                 setStage(nextStageFor(gala));
+    }
+
 
 
   // Galas 1–10
@@ -1879,7 +2085,7 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
     }
 
 
-    function revelarTop3YFavorito(){
+    function revelarTop3YFavorito() {
       if (!gstate || gstate.top3.length === 0) return;
       if (gala >= 10) {
         pushLog(`ℹ️ Desde la Gala 10 no hay favorito. Continúa con la evaluación del jurado.`);
@@ -1887,52 +2093,87 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         return;
       }
 
-      // ——— FASE 1: solo nombres, orden aleatorio, sin % ———
+      // FASE 1: nombres (manual o automático)
       if (!gstate.top3NamesRevealed) {
-        const orden = (gstate.top3RandomOrder?.length
-          ? gstate.top3RandomOrder
-          : shuffle(gstate.top3));
-        const lista = orden.map(nameOf).join(" · ");
-        pushLog(`🎖️ Los 3 favoritos (orden aleatorio): ${lista}`);
-        setGstate({ ...gstate, top3NamesRevealed: true });
+        if (manual) {
+          const candidatos = contestants.filter(c => c.status === "active").map(c => c.id);
+          const top3Elegidos = pickManually(candidatos, true, nameOf, "Elige a los 3 más votados")?.slice(0,3);
+          if (!top3Elegidos || top3Elegidos.length !== 3) { alert("Debes elegir 3."); return; }
 
+          setGstate(s => ({
+            ...s,
+            top3: top3Elegidos,
+            top3NamesRevealed: true,
+            top3RandomOrder: null
+          }));
           setSummaries(s => ({
-          ...s,
-          [gala]: {
-            ...(s[gala] || { gala }),
-            top3Ids: gstate.top3,          // 👈 solo nombres Top-3
-            [gala]: { ...(s[gala]?.[gala] || {}) }
-          }
-        }));
+            ...s,
+            [gala]: { ...(s[gala] || { gala }), top3Ids: top3Elegidos }
+          }));
+          pushLog(`⭐ Top-3 (manual, sin %): ${top3Elegidos.map(nameOf).join(" · ")}`);
+          return;
+        }
 
-        // 👆 No fijamos favorit@ todavía, ni cambiamos de etapa
+        // AUTOMÁTICO — FIX #1: no usar s.top3 (no existe). Además conservar 'orden'.
+        const orden = gstate.top3RandomOrder?.length
+          ? gstate.top3RandomOrder
+          : shuffle([...gstate.top3]);           // copia antes de barajar
+
+        pushLog(`⭐ Los 3 favoritos (orden aleatorio): ${orden.map(nameOf).join(" · ")}`);
+
+        setGstate(s => ({ ...s, top3NamesRevealed: true, top3RandomOrder: orden }));
+        setSummaries(s => ({
+          ...s,
+          [gala]: { ...(s[gala] || { gala }), top3Ids: gstate.top3 } // <-- usar gstate.top3
+        }));
         return;
       }
 
-      // ——— FASE 2: revelación completa (como siempre) ———
-      const top3 = gstate.top3
+      // FASE 2: revelar favorito
+      if (manual) {
+        const top3 = gstate.top3 || [];
+        if (top3.length !== 3) { alert("No hay Top-3 definido."); return; }
+
+        const favoritoId = pickManually(top3, false, nameOf, "Elige al Favorito/a");
+        if (!favoritoId) return;
+
+        const salvados = new Set(gstate.salvados); 
+        salvados.add(favoritoId);
+
+        setGstate(s => ({ ...s, favoritoId, salvados, top3Pct: [] }));
+        setSummaries(s => ({
+          ...s,
+          [gala]: { ...(s[gala] || { gala }), top3Ids: top3, favoritoId }
+        }));
+        pushLog(`🌟 Favorito/a (manual): <strong>${nameOf(favoritoId)}</strong>. Top-3: ${top3.map(nameOf).join(" · ")}`);
+        setStage("juradoEvaluando");
+        return;
+      }
+
+      // AUTOMÁTICO — FIX #2: calcular favorito/top3Pct/salvados aquí
+      const top3Rank = gstate.top3
         .map(id => gstate.publicRank.find(r => r.id === id))
         .filter(Boolean)
         .sort((a, b) => b.pct - a.pct);
 
-      const favorito = top3[0];
-      const top3Pct  = top3.map(t => t.pct);
+      const favorito = top3Rank[0];
+      const top3Pct  = top3Rank.map(t => t.pct);
 
       const salvados = new Set(gstate.salvados);
       salvados.add(favorito.id);
 
       pushLog(
         `🌟 <strong>Favorito/a: ${nameOf(favorito.id)}</strong>. ` +
-        `Porcentajes Top3: ${top3.map(t => `${nameOf(t.id)} ${fmtPct(t.pct)}`).join(" · ")}`
+        `Porcentajes Top3: ${top3Rank.map(t => `${nameOf(t.id)} ${fmtPct(t.pct)}`).join(" · ")}`
       );
 
-      setGstate({
-        ...gstate,
+      setGstate(s => ({
+        ...s,
         favoritoId: favorito.id,
         salvados,
         top3Pct,
         finalTwoPlan: undefined
-      });
+      }));
 
       setSummaries(s => ({
         ...s,
@@ -1941,6 +2182,7 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
 
       setStage("juradoEvaluando");
     }
+
 
     function evaluarSiguientePorJurado(){
       if (!gstate) return;
@@ -2021,6 +2263,47 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
       const remaining = pend.length;
       const needed = 4 - gstate.nominados.length;
       let plan = gstate.finalTwoPlan;
+
+      // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+      // MODO MANUAL: decidir “salvado” o “nominado” para el evaluado actual
+      if (manual) {
+        // (opcional) evitar que sea imposible llegar a 4 nominados
+        const canSave = (remaining - 1) >= (4 - gstate.nominados.length);
+        const choice = pickManually(
+          canSave ? ["salvado", "nominado"] : ["nominado"], // fuerza nominado si no alcanzamos 4
+          false,
+          x => x
+        );
+        if (!choice) return;
+
+        if (choice === "nominado" && gstate.nominados.length < 4) {
+          writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>${NOM(id)}</strong>.`);
+          setGstate({
+            ...gstate,
+            currentEvaluadoId: undefined,
+            currentEvaluadoLogIndex: undefined,
+            nominados: [ ...gstate.nominados, id ],
+            evalResults: [ ...gstate.evalResults, { id, result: "nominado" } ],
+            finalTwoPlan: plan ? plan.slice(1) : undefined,
+            evaluacionOrden: gstate.evaluacionOrden.filter(x => x !== id)
+          });
+        } else {
+          writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → cruza la pasarela.`);
+          const salvados = new Set(gstate.salvados); salvados.add(id);
+          setGstate({
+            ...gstate,
+            currentEvaluadoId: undefined,
+            currentEvaluadoLogIndex: undefined,
+            salvados,
+            evalResults: [ ...gstate.evalResults, { id, result: "salvado" } ],
+            finalTwoPlan: plan ? plan.slice(1) : undefined,
+            evaluacionOrden: gstate.evaluacionOrden.filter(x => x !== id)
+          });
+        }
+        return; // <<< evita toda la rama automática
+      }
+      // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
 
       // —— Reglas específicas para GALA 9 ——
       // (a) 3ª valoración y aún 0 nominados → forzar NOMINADO
@@ -2204,6 +2487,41 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
 
       const cand = [...gstate.nominados];
 
+      // ======= MODO MANUAL =======
+      if (manual) {
+        const salvado = pickManually(cand, false, nameOf, "Los profesores salvan a");
+        if (!salvado) return;
+
+        const nominados = cand.filter(id => id !== salvado);
+        const salvados  = new Set(gstate.salvados); salvados.add(salvado);
+
+        pushLog(`🎓 Profesores salvan (manual) a <strong>${nameOf(salvado)}</strong>.`);
+
+        setGstate({ ...gstate, profesorSalvoId: salvado, nominados, salvados });
+
+        // Usa la misma actualización "completa" de summaries + relleno
+        setSummaries(s => {
+          const Sact = {
+            ...s,
+            [gala]: {
+              ...(s[gala] || { gala }),
+              profesorSalvoId: salvado,
+              juradoNominados: s[gala]?.juradoNominados || cand,
+              top3Ids: s[gala]?.top3Ids || [],
+              top3Pct: s[gala]?.top3Pct || [],
+              duelSaved: s[gala]?.duelSaved,
+              [gala]: s[gala]?.[gala] || {}
+            }
+          };
+          return rellenarValoracionesReparto(gala, Sact, contestants);
+        });
+
+        setStage("companerosVotan");
+        return; // no continuar con la rama automática
+      }
+      // ===== FIN MODO MANUAL =====
+
+      // -------- Rama automática (tu código) --------
       // En G10: contar nominaciones solo hasta la Gala 9 (sin incluir la actual)
       const countUntil = (gala === 10) ? 9 : gala;
       const curList    = (gala === 10) ? undefined : cand;
@@ -2240,11 +2558,6 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
 
       setGstate({ ...gstate, profesorSalvoId: salvado, nominados, salvados });
 
-      setSummaries(s => ({
-        ...s,
-        [gala]: { ...(s[gala] || { gala }), profesorSalvoId: salvado, juradoNominados: s[gala]?.juradoNominados || cand }
-      }));
-
       setSummaries(s => {
         const Sact = {
           ...s,
@@ -2267,8 +2580,9 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
 
 
 
+
   
-  function companerosVotan(){
+    function companerosVotan() {
       // 🔐 Defensas tempranas
       if (!gstate) { pushLog("⚠️ Estado no inicializado."); return; }
 
@@ -2282,6 +2596,66 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         return;
       }
 
+      // ======= 💡 MODO MANUAL =======
+      if (manual) {
+        const salvado = pickManually(candidatos, false, nameOf, "Los compañeros salvan a");
+        if (!salvado) return;
+
+        pushLog(`🧑‍🤝‍🧑 Compañeros salvan (manual) a <strong>${nameOf(salvado)}</strong>.`);
+
+        const nominadosRestantes = candidatos.filter(id => id !== salvado);
+        const nuevosSalvados = new Set(salvadosSet);
+        nuevosSalvados.add(salvado);
+
+        setGstate({
+          ...gstate,
+          votosCompaneros: [], // sin votos simulados
+          salvadoCompanerosId: salvado,
+          nominados: nominadosRestantes,
+          salvados: nuevosSalvados
+        });
+
+        // Guardado y tabla de reparto igual que el automático
+        setSummaries(s => {
+          const seguro = {
+            ...s,
+            [gala]: {
+              ...(s[gala] || { gala }),
+              juradoNominados: s[gala]?.juradoNominados || [],
+              profesorSalvoId: gstate.profesorSalvoId ?? s[gala]?.profesorSalvoId,
+              salvadoCompanerosId: salvado,
+              finalNominees: nominadosRestantes,
+              favoritoId: gstate.favoritoId ?? s[gala]?.favoritoId,
+              top3Pct: gstate.top3Pct ?? s[gala]?.top3Pct,
+              top3Ids: s[gala]?.top3Ids || [],
+              duelSaved: s[gala]?.duelSaved,
+              [gala]: s[gala]?.[gala] || {}
+            }
+          };
+
+          const res = rellenarValoracionesReparto(gala, seguro, contestants);
+          return res;
+        });
+
+        pushLog(`🟥 Nominados para la próxima gala: <strong>${nameOf(nominadosRestantes[0])}</strong> vs <strong>${nameOf(nominadosRestantes[1])}</strong>.`);
+        setCarryNominees(nominadosRestantes);
+
+        // Limpieza y cierre de gala
+        setSummaries(s => ({ ...s, [gala]: { ...(s[gala] || { gala }), duelSaved: {} } }));
+        setStage("galaCerrada");
+
+        // Avanzar a la siguiente gala
+        const goNext = () => {
+          const next = gala + 1;
+          setGala(next);
+          prepararNuevaGala(next, contestants);
+        };
+        return;
+      }
+      // ===== FIN MODO MANUAL =====
+
+      // ======= 💻 MODO AUTOMÁTICO (tu código original) =======
+
       // Electores: salvados hasta ahora
       const electores = Array.from(salvadosSet);
       if (electores.length === 0) {
@@ -2293,7 +2667,6 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
       const votos = [];
       electores.forEach(v => {
         const elegido = pickRandom(candidatos, 1)[0];
-        // Si por lo que sea no hay elegido, salimos con seguridad
         if (!elegido) return;
         votos.push({ voterId: v, votedId: elegido });
       });
@@ -2301,57 +2674,46 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
       // Recuento robusto
       const recuento = Object.fromEntries(candidatos.map(c => [c, 0]));
       votos.forEach(v => {
-        if (v && v.votedId in recuento) recuento[v.votedId] = (recuento[v.votedId] || 0) + 1;
+        if (v && v.votedId in recuento)
+          recuento[v.votedId] = (recuento[v.votedId] || 0) + 1;
       });
 
-    // === Empate y voto doble del favorito (solo para desempate) ===
+      // Empate y voto doble del favorito (solo para desempate)
+      const votoDe = {};
+      votos.forEach(v => { votoDe[v.voterId] = v.votedId; });
 
-    // construimos mapa de voto por votante (para saber a quién votó el favorito)
-    const votoDe = {};
-    votos.forEach(v => { votoDe[v.voterId] = v.votedId; });
+      let max = Math.max(...Object.values(recuento));
+      let empatados = Object.entries(recuento)
+        .filter(([, n]) => n === max)
+        .map(([id]) => id);
 
-    // determinamos el recuento máximo y los empatados
-    let max = Math.max(...Object.values(recuento));
-    let empatados = Object.entries(recuento)
-      .filter(([, n]) => n === max)
-      .map(([id]) => id);
-
-    // === Empate y voto doble del favorito (solo para desempate) ===
-    let desempateMsg = null;
-    if (empatados.length > 1) {
-      const favId = gstate.favoritoId ?? null;
-      if (favId) {
-        const votoFav = votoDe[favId];
-        if (votoFav && empatados.includes(votoFav)) {
-          empatados = [votoFav];
-          desempateMsg = `⭐ Desempate: el voto del favorito (${nameOf(favId)}) decide a favor de ${nameOf(votoFav)}.`;
+      let desempateMsg = null;
+      if (empatados.length > 1) {
+        const favId = gstate.favoritoId ?? null;
+        if (favId) {
+          const votoFav = votoDe[favId];
+          if (votoFav && empatados.includes(votoFav)) {
+            empatados = [votoFav];
+            desempateMsg = `⭐ Desempate: el voto del favorito (${nameOf(favId)}) decide a favor de ${nameOf(votoFav)}.`;
+          }
         }
       }
-    }
 
-
-      // Elegir ganador con tolerancia si por algún motivo sigue vacío
       const ganador = (empatados.length ? pickRandom(empatados, 1)[0] : pickRandom(candidatos, 1)[0]);
       if (!ganador) {
         pushLog("⚠️ No se pudo determinar ganador en la votación de compañeros. Se omite.");
         return;
       }
 
-      // Logs bonitos
       const votosList = votos.map(v => `<li>${nameOf(v.voterId)} → ${nameOf(v.votedId)}</li>`).join("");
       pushLog(`🧑‍🤝‍🧑 Votación de compañeros:<ul style="margin:4px 0 0 16px;">${votosList}</ul>${gstate.favoritoId ? "<div class=\"text-xs\">* El voto del favorito vale doble en caso de empate</div>" : ""}`);
 
-
-      // 📊 Mostrar recuento
       const contadorHTML = candidatos.map(id => `<strong>${nameOf(id)}</strong> ${recuento[id] ?? 0}`).join(" · ");
       pushLog(`📊 Recuento de votos (compañeros): ${contadorHTML}`);
 
-      // ⭐ Mostrar mensaje de desempate (si lo hubo)
       if (desempateMsg) pushLog(desempateMsg);
-
       pushLog(`✅ Más votado por compañeros: <strong>${nameOf(ganador)}</strong> (se salva).`);
 
-      // Avance de estado
       const nominadosRestantes = candidatos.filter(id => id !== ganador);
       const nuevosSalvados = new Set(salvadosSet); nuevosSalvados.add(ganador);
 
@@ -2363,7 +2725,6 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         salvados: nuevosSalvados
       });
 
-      // Guardado mínimo (no dependemos de estructuras profundas aún)
       setSummaries(s => ({
         ...s,
         [gala]: { ...(s[gala] || { gala }), salvadoCompanerosId: ganador, finalNominees: nominadosRestantes }
@@ -2372,59 +2733,36 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
       pushLog(`🟥 Nominados para la próxima gala: <strong>${nameOf(nominadosRestantes[0])}</strong> vs <strong>${nameOf(nominadosRestantes[1])}</strong>.`);
       setCarryNominees(nominadosRestantes);
 
-      // 💾 Completar valoraciones en la tabla de reparto SOLO si existe el reparto
       setSummaries(s => {
         const seguro = {
           ...s,
           [gala]: {
             ...(s[gala] || { gala }),
-            // ✅ Mantenemos la lista original de propuestos del jurado
             juradoNominados: s[gala]?.juradoNominados || [],
-
-            // ✅ Quien salvó el jurado o profes
             profesorSalvoId: gstate.profesorSalvoId ?? s[gala]?.profesorSalvoId,
-
-            // ✅ Ganador de los compañeros
             salvadoCompanerosId: ganador,
-
-            // ✅ Nominados finales que van a duelo
             finalNominees: nominadosRestantes,
-
-            // ✅ Info del público (favorito y %)
             favoritoId: gstate.favoritoId ?? s[gala]?.favoritoId,
             top3Pct: gstate.top3Pct ?? s[gala]?.top3Pct,
-            top3Ids: s[gala]?.top3Ids || [],   // 👈 PRESERVA EL TOP-3 DE ESA GALA
-
-            // ✅ Si alguien venía salvado del público, no perderlo
+            top3Ids: s[gala]?.top3Ids || [],
             duelSaved: s[gala]?.duelSaved,
-
             [gala]: s[gala]?.[gala] || {}
           }
         };
-
-        // 👉 Recalcula la tabla de reparto con las nuevas etiquetas
         const res = rellenarValoracionesReparto(gala, seguro, contestants);
-
-        // Devuelve el nuevo objeto de summaries actualizado
         return res;
       });
-      // 🧹 Consumir duelSaved: que NO se arrastre a la siguiente gala
-        setSummaries(s => ({
-          ...s,
-          [gala]: { ...(s[gala] || { gala }), duelSaved: {} }
-        }));
 
-
-      // 👉 Una vez actualizados los summaries, cierra la gala
+      setSummaries(s => ({ ...s, [gala]: { ...(s[gala] || { gala }), duelSaved: {} } }));
       setStage("galaCerrada");
 
-        // === AVANZAR A LA SIGUIENTE GALA ===
-        const goNext = () => {
-          const next = gala + 1;
-          setGala(next);
-          prepararNuevaGala(next, contestants);
-        };
-  }
+      const goNext = () => {
+        const next = gala + 1;
+        setGala(next);
+        prepararNuevaGala(next, contestants);
+      };
+    }
+
 
     // ===============================================================
     //  Gala 11  →  6 concursantes
@@ -2438,7 +2776,6 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
       const toHalf = x => Math.round(x * 2) / 2;
       const clamp  = (x, a, b) => Math.max(a, Math.min(b, x));
 
-      // === SOLO 6 concursantes "vivos" (excluye al eliminado del duelo) ===
       const rows   = (summaries?.[11]?.[11]?.reparto || []);
       const idsRaw = rows.flatMap(r => r.members);
       const ids    = Array.from(new Set(idsRaw)).filter(id => {
@@ -2450,26 +2787,45 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         pushLog("⚠️ No hay concursantes en el reparto de la Gala 11.");
         return;
       }
+
       if (ids.length !== 6) {
         pushLog(`⚠️ Aviso: el jurado debería puntuar a 6 concursantes y ahora mismo hay ${ids.length}.`, 11);
       }
 
-      // Nominaciones acumuladas G1–G10
+      // ======= 💡 MODO MANUAL: eliges tú el Top-3 =======
+      let top3Ids;
+      if (manual) {
+        const elegidos = pickManually(ids, true, nameOf, "Elige el Top 3 del jurado")?.slice(0,3);
+        if (!elegidos || elegidos.length !== 3) {
+          alert("Debes elegir 3 concursantes para el Top-3 del jurado.");
+          return;
+        }
+        top3Ids = elegidos;
+        pushLog(`🏁 Top-3 del jurado (manual): ${top3Ids.map(nameOf).join(", ")}.`);
+      } else {
+        // 🔁 Automático como antes (por menos nominaciones)
+        const withNoms = ids.map(id => ({
+          id,
+          noms: countNomsThrough(id, summaries, 10, undefined)
+        }));
+        const ordered    = withNoms.sort((a,b)=>a.noms-b.noms);
+        top3Ids = ordered.slice(0,3).map(x=>x.id);
+      }
+      // ======= FIN MODO MANUAL =======
+
+      // Calculamos el resto normalmente
       const withNoms = ids.map(id => ({
         id,
         noms: countNomsThrough(id, summaries, 10, undefined)
       }));
 
-      // Ordenar por menos nominaciones y fijar Top-3 por norma
-      const ordered    = withNoms.sort((a,b)=>a.noms-b.noms);
-      const forcedTop3 = new Set(ordered.slice(0,3).map(x=>x.id));
-      const bottom3    = ordered.slice(-3).map(x=>x.id); // se decidirán luego con profes
+      const bottom3 = ids.filter(id => !top3Ids.includes(id));
 
-      // Generar notas (Top-3 medias más altas; el resto depende de sus nominaciones)
+      // Generar notas (Top-3 medias más altas; el resto depende de nominaciones)
       const notas = {};
       ids.forEach(id => {
         const item = withNoms.find(x=>x.id===id);
-        const baseMean = forcedTop3.has(id) ? 8.8 : 8.6 - 0.30 * (item?.noms ?? 0);
+        const baseMean = top3Ids.includes(id) ? 8.8 : 8.6 - 0.30 * (item?.noms ?? 0);
         const arr = [];
         for (let j=0;j<4;j++) {
           const noise = (Math.random()-0.5) * 1.0; // ±0.5
@@ -2478,7 +2834,7 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         notas[id] = arr;
       });
 
-      // Ranking por media y desglose por juez
+      // Ranking y desglose (sin tocar)
       const ranking = ids.map(id => {
         const media = +(notas[id].reduce((a,b)=>a+b,0) / 4).toFixed(2);
         return { id, media, notas: notas[id] };
@@ -2490,13 +2846,7 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         return { id, j1, j2, j3, j4, total };
       }).sort((a,b)=>b.total-a.total);
 
-      // Top-3 garantizado por menos nominaciones
-      const top3Ids = Array.from(forcedTop3);
-
-      // 🗺️ RECORRIDO (G11): “Nota: x.xx” + color
-      // - DodgerBlue: mayor media del Top-3
-      // - Blanco: los otros 2 del Top-3
-      // - Orange: el resto (temporal; luego profes pasa 1 a YellowGreen)
+      // 🟦 Colores y guardado (idéntico)
       const top3Ranking = ranking.filter(r => top3Ids.includes(r.id)).sort((a,b)=>b.media-a.media);
       const bestId = top3Ranking[0]?.id;
 
@@ -2519,7 +2869,7 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         color: top3Ids.includes(r.id) ? (r.id === bestId ? "DodgerBlue" : "white") : "orange",
       }));
 
-      // Persistir TODO de la Fase 1 en un solo setSummaries
+      // Guardar resumen
       setSummaries(s => ({
         ...s,
         11: {
@@ -2534,23 +2884,22 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         }
       }));
 
-      // Marcar finalistas (Top-3)
+      // Marcar finalistas Top-3
       setContestants(prev => prev.map(c => (
         top3Ids.includes(c.id)
           ? { ...c, status: "finalista", history: [...(c.history||[]), { gala: 11, evento: "Finalista" }] }
           : c
       )));
 
-      // Logs
       const listaMedia = ranking.map(t=>`${nameOf(t.id)} ${t.media}`).join(" · ");
       pushLog(`📊 Media del jurado (G11): ${listaMedia}.`);
-      pushLog(`🏁 Finalistas por jurado (Top 3): ${top3Ids.map(nameOf).join(", ")}.`);
+      pushLog(`🏁 Finalistas por jurado (Top-3): ${top3Ids.map(nameOf).join(", ")}.`);
       pushLog(`⏭️ Falta decisión de profes entre: ${bottom3.map(nameOf).join(", ")}.`);
 
-      // Pintar reparto (Top-3 Finalista) y pasar a profesores
       setSummaries(s => rellenarValoracionesReparto(11, s, contestants));
       setStage("g11_profes");
     }
+
 
 
     
@@ -2562,21 +2911,78 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         return;
       }
 
-      // Criterio: menos nominaciones acumuladas (G1–G11)
+      // ======= 💡 MODO MANUAL =======
+      if (manual) {
+        const profSaveId = pickManually(bottom3, false, nameOf, "Elige al 4º Finalista");
+        if (!profSaveId) return;
+
+        const duelIds = bottom3.filter(x => x !== profSaveId);
+
+        // Guardar resultados y recolorear
+        setSummaries(prev => {
+          const updated = { ...prev };
+          const S11 = { ...(updated[11] || { gala: 11 }) };
+          const rec = Array.isArray(S11.recorrido)
+            ? S11.recorrido.map(r =>
+                r.id === profSaveId
+                  ? { ...r, color: "yellowgreen" }
+                  : r
+              )
+            : S11.recorrido;
+
+          updated[11] = {
+            ...S11,
+            profesorSalvoId: profSaveId,
+            juradoNominados: duelIds,
+            finalNominees: duelIds,
+            recorrido: rec
+          };
+          return updated;
+        });
+
+        // Marcar 4.º finalista
+        setContestants(prev => prev.map(c => (
+          c.id === profSaveId
+            ? { ...c, status: "finalista", history: [...(c.history || []), { gala: 11, evento: "Finalista" }] }
+            : c
+        )));
+
+        if (typeof setRecorrido === "function") {
+          setRecorrido(prev => {
+            const n = { ...prev };
+            if (!n[11]) n[11] = {};
+            const duelSet = new Set(duelIds.map(String));
+            const profStr = String(profSaveId);
+
+            Object.keys(n[11]).forEach(k => {
+              const raw = String(n[11][k]);
+              const [texto] = raw.includes("|") ? raw.split("|") : [raw];
+              if (k === profStr) n[11][k] = `${texto}|yellowgreen`;
+              if (duelSet.has(k)) n[11][k] = `${texto}|orange`;
+            });
+            return n;
+          });
+        }
+
+        pushLog(`🎓 Profesores (manual) salvan a <strong>${nameOf(profSaveId)}</strong> (4.º finalista).`);
+        setSummaries(s => rellenarValoracionesReparto(11, s, contestants));
+        setStage("g11_cerrar");
+        return; // no seguir rama automática
+      }
+      // ===== FIN MODO MANUAL =====
+
+      // ======= 💻 MODO AUTOMÁTICO (tu código actual) =======
       const profSaveId = pickProfSaveByFewestNoms(new Set(bottom3), summaries, 11);
       const duelIds = bottom3.filter(x => x !== profSaveId);
 
-      // 1) Persistir resultados finales de G11 + recolorear 'recorrido' en summaries
       setSummaries(prev => {
         const updated = { ...prev };
         const S11 = { ...(updated[11] || { gala: 11 }) };
-
-        // Recolorear recorrido si existe (mantiene DodgerBlue/white del top3; pone yellowgreen al salvado)
         const rec = Array.isArray(S11.recorrido)
           ? S11.recorrido.map(r =>
               r.id === profSaveId
                 ? { ...r, color: "yellowgreen" }
-                : r // los dos duelistas ya están en orange desde la fase 1
+                : r
             )
           : S11.recorrido;
 
@@ -2584,13 +2990,12 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
           ...S11,
           profesorSalvoId: profSaveId,
           juradoNominados: duelIds,
-          finalNominees: duelIds,   // para arrastrar a G12
+          finalNominees: duelIds,
           recorrido: rec
         };
         return updated;
       });
 
-      // 2) Marcar 4º finalista en contestants
       setContestants(prev => prev.map(c => {
         if (c.id === profSaveId) {
           return {
@@ -2602,31 +3007,28 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         return c;
       }));
 
-    // 3) (Opcional) si tu tabla de recorrido también lee de setRecorrido (formato "Texto|color"), sincroniza:
-    if (typeof setRecorrido === "function") {
-      setRecorrido(prev => {
-        const n = { ...prev };
-        if (!n[11]) n[11] = {};
-        const duelSet = new Set(duelIds.map(String));
-        const profStr = String(profSaveId);
+      if (typeof setRecorrido === "function") {
+        setRecorrido(prev => {
+          const n = { ...prev };
+          if (!n[11]) n[11] = {};
+          const duelSet = new Set(duelIds.map(String));
+          const profStr = String(profSaveId);
 
-        Object.keys(n[11]).forEach(k => {
-          const raw = String(n[11][k]);
-          const [texto] = raw.includes("|") ? raw.split("|") : [raw];
-          if (k === profStr) n[11][k] = `${texto}|yellowgreen`;
-          if (duelSet.has(k)) n[11][k] = `${texto}|orange`; // garantizamos orange en duelistas
+          Object.keys(n[11]).forEach(k => {
+            const raw = String(n[11][k]);
+            const [texto] = raw.includes("|") ? raw.split("|") : [raw];
+            if (k === profStr) n[11][k] = `${texto}|yellowgreen`;
+            if (duelSet.has(k)) n[11][k] = `${texto}|orange`;
+          });
+          return n;
         });
-        return n;
-      });
-    }
+      }
 
-      // 4) Logs
-      pushLog(`🎓 Profesores salvan a <strong>${nameOf(profSaveId)}</strong> (4º finalista).`);
-
-      // 5) Repintar la columna "Valoración" del reparto de la G11 y pasar a cierre
-      setSummaries(s => rellenarValoracionesReparto(11, s, contestants));  // pinta profe + duelistas
+      pushLog(`🎓 Profesores salvan a <strong>${nameOf(profSaveId)}</strong> (4.º finalista).`);
+      setSummaries(s => rellenarValoracionesReparto(11, s, contestants));
       setStage("g11_cerrar");
     }
+
 
 
 
@@ -2723,19 +3125,61 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
 
       const { a, b } = g.duel;
 
-      // ganador por mayor %
+      // ======= 💡 MODO MANUAL: eliges quién es el expulsado =======
+      if (manual) {
+        const expulsado = pickManually([a, b], false, nameOf, "Elige al último eliminado/a");
+        if (!expulsado) return;
+        const winner = (String(expulsado) === String(a)) ? b : a;
+
+        // Mantén los % que ya generaste (o los revelados)
+        const map  = new Map((g.revealed || []).map(r => [String(r.id), r.pct]));
+        const pctA = map.has(String(a)) ? map.get(String(a)) : g.duel.pctA;
+        const pctB = map.has(String(b)) ? map.get(String(b)) : g.duel.pctB;
+
+        // Guarda estado y summaries igual que el automático
+        setGstate(s => ({ ...(s || {}), g12: { ...g, duel: { ...g.duel, winner, pctA, pctB }, duelDone: true }}));
+        setSummaries(s => ({ ...s, 12: { ...(s[12] || { gala: 12 }), duel: { a, b, winner, pctA, pctB }}}));
+
+        // Actualiza concursantes
+        setContestants(prev => prev.map(c => {
+          if (String(c.id) === String(winner) && c.status !== "finalista") {
+            return { ...c, status: "finalista", history: [...(c.history||[]), { gala: 12, evento: "Finalista" }] };
+          }
+          if (String(c.id) === String(expulsado)) {
+            return { ...c, status: "eliminado", history: [...(c.history||[]), { gala: 12, evento: "Eliminado" }] };
+          }
+          return c;
+        }));
+
+        // Logs
+        pushLog(`🗳️ <strong>${nameOf(winner)}</strong>. ${nameOf(expulsado)} es eliminado/a. (manual)`, 12);
+
+        setSummaries(s => rellenarValoracionesReparto(12, s, contestants));
+
+        const finalistas = contestants
+          .map(c => ({...c}))
+          .filter(c => c.status === "finalista" || String(c.id) === String(winner))
+          .map(c => nameOf(c.id));
+        pushLog(`🏁 Finalistas: ${finalistas.join(", ")}.`, 12);
+
+        setStage("galaCerrada");
+        return; // ⛔ no seguir a la rama automática
+      }
+      // ===== FIN MODO MANUAL =====
+
+      // ======= 💻 MODO AUTOMÁTICO (tu código tal cual debajo) =======
+      const { a: A, b: B } = g.duel;
+
       const map  = new Map((g.revealed || []).map(r => [String(r.id), r.pct]));
-      const pctA = map.has(String(a)) ? map.get(String(a)) : g.duel.pctA;
-      const pctB = map.has(String(b)) ? map.get(String(b)) : g.duel.pctB;
+      const pctA = map.has(String(A)) ? map.get(String(A)) : g.duel.pctA;
+      const pctB = map.has(String(B)) ? map.get(String(B)) : g.duel.pctB;
 
-      const winner = pctA > pctB ? a : b;
-      const loser  = winner === a ? b : a;
+      const winner = pctA > pctB ? A : B;
+      const loser  = winner === A ? B : A;
 
-      // Guarda en gstate y summaries
       setGstate(s => ({ ...(s || {}), g12: { ...g, duel: { ...g.duel, winner, pctA, pctB }, duelDone: true }}));
-      setSummaries(s => ({ ...s, 12: { ...(s[12] || { gala: 12 }), duel: { a, b, winner, pctA, pctB }}}));
+      setSummaries(s => ({ ...s, 12: { ...(s[12] || { gala: 12 }), duel: { a: A, b: B, winner, pctA, pctB }}}));
 
-      // Actualiza concursantes
       setContestants(prev => prev.map(c => {
         if (String(c.id) === String(winner) && c.status !== "finalista") {
           return { ...c, status: "finalista", history: [...(c.history||[]), { gala: 12, evento: "Finalista" }] };
@@ -2746,14 +3190,9 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         return c;
       }));
 
-      // 📝 Logs en el orden pedido:
-      // (la frase del presentador ya sale en g12_revealPhrase)
       pushLog(`🗳️ <strong>${nameOf(winner)}</strong>. ${nameOf(loser)} es eliminado/a.`, 12);
-
-      // Reparto (G12): ganador → "Salvad@ por el público (%) > Finalista" ; resto → Finalista
       setSummaries(s => rellenarValoracionesReparto(12, s, contestants));
 
-      // Log con el listado final de finalistas (5)
       const finalistas = contestants
         .map(c => ({...c}))
         .filter(c => c.status === "finalista" || String(c.id) === String(winner))
@@ -2762,6 +3201,7 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
 
       setStage("galaCerrada");
     }
+
 
     // ======================================================
 // 🏁  GALA 13 – GRAN FINAL  (Fase 1: Top5 → Fase 2: Top3 → Ganador)
@@ -2817,18 +3257,67 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
     return s === "a" ? "Ganadora" : s === "e" ? "Ganadore" : "Ganador";
   };
 
+   // =========================
+  // 🔧 HELPER SOLO PARA G13
+  // Quita "(xx.xx%)" de la columna "Valoración" en el reparto de la Final
+  // (se aplica únicamente cuando 'manual' es true)
+  // =========================
+  function stripPercentsRepartoG13() {
+    if (!manual) return; // solo en modo manual
+    setSummaries(s => {
+      const S = s[13];
+      const rep = S?.[13]?.reparto;
+      if (!S || !rep) return s;
+
+      const strip = (txt = "") =>
+        txt
+          .replace(/\s*\(\d+(?:\.\d+)?%\)\s*/g, "")  // borra "(n%)" o "(n.nn%)"
+          .replace(/^Duelo\s*$/i, "Duelo");         // normaliza "Duelo"
+
+      const nuevo = rep.map(r => ({ ...r, valor: strip(r.valor || "") }));
+
+      return {
+        ...s,
+        13: {
+          ...(S || { gala: 13 }),
+          [13]: { ...(S?.[13] || {}), reparto: nuevo }
+        }
+      };
+    });
+  }
+
+  // =========================
+  // 🏁 GALA 13 – FINAL (con ramas MANUAL que usan el helper)
+  // =========================
+
   function g13_reveal5th() {
     const g = gstate?.g13;
     if (!g || g.fase !== 1 || g.revealed.includes("5th")) return;
 
+    // ======= 💡 MANUAL =======
+    if (manual) {
+      const ids = g.porcentajes.map(p => p.id);
+      const elegido = pickManually(ids, false, nameOf, "Revela al 5º/ª Finalista");
+      if (!elegido) return;
+
+      const pct = (g.porcentajes.find(p => String(p.id) === String(elegido))?.pct) ?? 0;
+
+      pushLog(`🔎 <strong>${nameOf(elegido)}</strong> se convierte en 5${ordSuf(elegido)} Finalista.`, 13);
+
+      setGstate(s => ({ ...s, g13: { ...g, revealed: [...g.revealed, "5th"], fifth: { id: elegido, pct } }}));
+      setSummaries(s => ({ ...s, 13: { ...(s[13] || { gala: 13 }), fifth: { id: elegido, pct } }}));
+      setSummaries(s => rellenarValoracionesReparto(13, s, contestants));
+
+      // 🧽 Quitar % del reparto en MANUAL
+      stripPercentsRepartoG13();
+      return;
+    }
+    // ===== FIN MANUAL =====
+
+    // Automático
     const sorted = [...g.porcentajes].sort((a, b) => a.pct - b.pct);
     const fifth = sorted[0];
-
-    pushLog(
-  `🔎 <strong>${nameOf(fifth.id)}</strong> se convierte en 5${ordSuf(fifth.id)} Finalista (${fifth.pct.toFixed(2)}%).`,
-    13
-  );
-
+    pushLog(`🔎 <strong>${nameOf(fifth.id)}</strong> se convierte en 5${ordSuf(fifth.id)} Finalista (${fifth.pct.toFixed(2)}%).`, 13);
     setGstate(s => ({ ...s, g13: { ...g, revealed: [...g.revealed, "5th"], fifth }}));
     setSummaries(s => ({ ...s, 13: { ...(s[13] || { gala: 13 }), fifth }}));
     setSummaries(s => rellenarValoracionesReparto(13, s, contestants));
@@ -2837,17 +3326,47 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
   function g13_reveal4th() {
     const g = gstate?.g13;
     if (!g || g.fase!==1 || g.revealed.includes("4th")) return;
+
+    // ======= 💡 MANUAL =======
+    if (manual) {
+      const fifthId = g.fifth?.id || null;
+      const yaFuera = new Set([String(fifthId)].filter(Boolean));
+      const idsDisponibles = g.porcentajes.map(p => p.id).filter(id => !yaFuera.has(String(id)));
+
+      const elegido = pickManually(idsDisponibles, false, nameOf, "Revela al 4º/ª Finalista");
+      if (!elegido) return;
+
+      const pct = (g.porcentajes.find(p => String(p.id) === String(elegido))?.pct) ?? 0;
+
+      // Top3 = todos menos 5º y 4º
+      const excluded = new Set([String(fifthId), String(elegido)].filter(Boolean));
+      const top3Ids = g.porcentajes.map(x=>x.id).filter(id=>!excluded.has(String(id)));
+
+      pushLog(`🔎 <strong>${nameOf(elegido)}</strong> se convierte en 4${ordSuf(elegido)} Finalista.`, 13);
+
+      setGstate(s=>({
+        ...s,
+        g13:{ ...g, revealed:[...g.revealed,"4th"], fourth: { id: elegido, pct }, fase:2, top3Ids, porcentajes:[], phraseShown:false }
+      }));
+      setSummaries(s=>({ ...s, 13:{ ...(s[13]||{gala:13}), fourth: { id: elegido, pct } }}));
+      setSummaries(s=>rellenarValoracionesReparto(13,s,contestants));
+
+      // 🧽 Quitar % del reparto en MANUAL
+      stripPercentsRepartoG13();
+
+      pushLog("⏭️ Pasa a la fase final (Top 3).", 13);
+      setStage("g13_fase2");
+      return;
+    }
+    // ===== FIN MANUAL =====
+
+    // Automático
     const sorted = [...g.porcentajes].sort((a,b)=>a.pct-b.pct);
     const fourth = sorted[1];
-
-    // Top3 = todos menos 5º y 4º
     const excluded = new Set([String(sorted[0].id), String(sorted[1].id)]);
     const top3Ids = g.porcentajes.map(x=>x.id).filter(id=>!excluded.has(String(id)));
 
-    pushLog(
-  `🔎 <strong>${nameOf(fourth.id)}</strong> se convierte en 4${ordSuf(fourth.id)} Finalista (${fourth.pct.toFixed(2)}%).`,
-    13
-  );
+    pushLog(`🔎 <strong>${nameOf(fourth.id)}</strong> se convierte en 4${ordSuf(fourth.id)} Finalista (${fourth.pct.toFixed(2)}%).`, 13);
 
     setGstate(s=>({
       ...s,
@@ -2856,10 +3375,9 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
     setSummaries(s=>({ ...s, 13:{ ...(s[13]||{gala:13}), fourth }}));
     setSummaries(s=>rellenarValoracionesReparto(13,s,contestants));
     pushLog("⏭️ Pasa a la fase final (Top 3).", 13);
-    setStage("g13_fase2");  // 👈 cambia a la etapa de Fase 2 (Top 3)
+    setStage("g13_fase2");
   }
 
-  // % ciegos Top3 (solo si no existen)
   function g13_setupFase2() {
     const g = gstate?.g13;
     if (!g || g.fase!==2) return;
@@ -2874,7 +3392,7 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
 
     setGstate(s=>({ ...(s||{}), g13:{ ...g, porcentajes, revealed:[], phraseShown:false }}));
     pushLog(
-    `📊 Porcentajes ciegos (Top 3): ${
+      `📊 Porcentajes ciegos (Top 3): ${
         [...porcentajes].sort((a,b)=>b.pct-a.pct).map(p=>`${p.pct.toFixed(2)}%`).join(" · ")
       }.`,
       13
@@ -2884,6 +3402,31 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
   function g13_reveal3rd() {
     const g = gstate?.g13;
     if (!g || g.fase!==2 || g.revealed.includes("3rd")) return;
+
+    // ======= 💡 MANUAL =======
+    if (manual) {
+      const top3 = Array.isArray(g.top3Ids) ? g.top3Ids.slice() : [];
+      if (top3.length !== 3) { pushLog("⚠️ No hay 3 finalistas para la fase 2.", 13); return; }
+
+      const elegido = pickManually(top3, false, nameOf, "Revela al 3er/ª Finalista");
+      if (!elegido) return;
+
+      const pct = (g.porcentajes.find(p => String(p.id) === String(elegido))?.pct) ?? 0;
+      const ord3 = sufOf(elegido) === "a" ? "3ª" : sufOf(elegido) === "e" ? "3e" : "3er";
+
+      pushLog(`🥉 <strong>${nameOf(elegido)}</strong> queda ${ord3} Finalista.`, 13);
+
+      setGstate(s=>({ ...s, g13:{ ...g, revealed:[...g.revealed,"3rd"], third: { id: elegido, pct } }}));
+      setSummaries(s=>({ ...s, 13:{ ...(s[13]||{gala:13}), third: { id: elegido, pct } }}));
+      setSummaries(s=>rellenarValoracionesReparto(13,s,contestants));
+
+      // 🧽 Quitar % del reparto en MANUAL
+      stripPercentsRepartoG13();
+      return;
+    }
+    // ===== FIN MANUAL =====
+
+    // Automático
     const sorted = [...g.porcentajes].sort((a,b)=>a.pct-b.pct);
     const third = sorted[0];
     const ord3 = sufOf(third.id) === "a" ? "3ª" : sufOf(third.id) === "e" ? "3e" : "3er";
@@ -2905,6 +3448,46 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
     const g = gstate?.g13;
     if (!g || g.fase !== 2 || g.revealed?.includes("winner")) return;
 
+    // ======= 💡 MANUAL =======
+    if (manual) {
+      const top3 = Array.isArray(g.top3Ids) ? g.top3Ids.slice() : [];
+      const thirdId = g.third?.id;
+      const rem = top3.filter(id => String(id) !== String(thirdId));
+      if (rem.length !== 2) { pushLog("⚠️ No hay 2 finalistas restantes.", 13); return; }
+
+      const ganadorId = pickManually(rem, false, nameOf, "Revela al Ganador/a");
+      if (!ganadorId) return;
+      const segundoId = rem.find(id => String(id) !== String(ganadorId));
+
+      const pWinner = (g.porcentajes.find(p => String(p.id) === String(ganadorId))?.pct) ?? 0;
+      const pSecond = (g.porcentajes.find(p => String(p.id) === String(segundoId))?.pct) ?? 0;
+
+      pushLog(`🥇 <strong>${nameOf(ganadorId)}</strong> es ${palabraGanador(ganadorId)}.`, 13);
+      pushLog(`🥈 <strong>${nameOf(segundoId)}</strong> queda 2${ordSuf(segundoId)} Finalista.`, 13);
+
+      setSummaries(s => ({ ...s, 13: { ...(s[13] || { gala: 13 }), winner: { id: ganadorId, pct: pWinner }, second: { id: segundoId, pct: pSecond } } }));
+      setSummaries(s => rellenarValoracionesReparto(13, s, contestants));
+
+      // 🧽 Quitar % del reparto en MANUAL
+      stripPercentsRepartoG13();
+
+      // Estados finales
+      setContestants(prev => prev.map(c => {
+        if (String(c.id) === String(ganadorId)) {
+          return { ...c, status: "ganador", history: [ ...(c.history || []), { gala: 13, evento: "Ganador" } ] };
+        }
+        if (String(c.id) === String(segundoId) || String(c.id) === String((gstate?.g13?.third || {}).id)) {
+          return { ...c, status: "finalista", history: [ ...(c.history || []), { gala: 13, evento: "Finalista" } ] };
+        }
+        return c;
+      }));
+
+      setStage("galaCerrada");
+      return; // no seguir a la rama automática
+    }
+    // ===== FIN MANUAL =====
+
+    // Automático
     const sorted = [...g.porcentajes].sort((a, b) => b.pct - a.pct);
     const winner = sorted[0];
     const second = sorted[1];
@@ -2912,13 +3495,8 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
     pushLog(`🥇 <strong>${nameOf(winner.id)}</strong> es ${palabraGanador(winner.id)} (${winner.pct.toFixed(2)}%).`, 13);
     pushLog(`🥈 <strong>${nameOf(second.id)}</strong> queda 2${ordSuf(second.id)} Finalista (${second.pct.toFixed(2)}%).`, 13);
 
-    // 1) Guardar en summaries (conserva el 'third' previamente guardado en g13_reveal3rd)
     setSummaries(s => ({ ...s, 13: { ...(s[13] || { gala: 13 }), winner, second } }));
-
-    // 2) Reetiquetar reparto (para que el “Valoración” quede coherente también)
     setSummaries(s => rellenarValoracionesReparto(13, s, contestants));
-
-    // 3) Actualizar estados de concursantes
     setContestants(prev => prev.map(c => {
       if (String(c.id) === String(winner.id)) {
         return { ...c, status: "ganador", history: [ ...(c.history || []), { gala: 13, evento: "Ganador" } ] };
@@ -2928,10 +3506,9 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
       }
       return c;
     }));
-
-    // 4) Cerrar la gala final → ahora sí, se mostrará "Cerrar edición"
     setStage("galaCerrada");
   }
+
 
 
  
@@ -2976,7 +3553,14 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
                   <Button onClick={iniciar}>▶️ Iniciar</Button>
                   <Button variant="outline" onClick={clearTypedList}>Limpiar lista</Button>
                 </div>
-
+                  <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={manual}
+                    onChange={(e) => setManual(e.target.checked)}
+                  />
+                  Modo manual
+                </label>
                 <div className="ml-auto">
                   <select
                     className="border rounded-md px-2 py-1 text-sm bg-white"
@@ -2991,6 +3575,15 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
           </CardContent>
         </Card>
       )}
+
+  <button
+    onClick={() => setManual(m => !m)}
+    className={`fixed bottom-4 right-4 px-3 py-2 rounded-full shadow
+                ${manual ? "bg-emerald-600 text-white" : "bg-neutral-200"}`}
+    title="Alternar modo manual"
+  >
+    {manual ? "Manual: ON" : "Manual: OFF"}
+  </button>
 
     <Button
       onClick={() => {
