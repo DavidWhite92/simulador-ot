@@ -538,13 +538,20 @@ function performanceModifier(stats, req){
 
       };
 
-      // Aplicar a cada fila del reparto
-      // 1) Calcula los valores "normales" con valueOf (sin trucos)
-      const temp = rep.map(row => {
-        const ids  = row.members;
-        const vals = ids.map(id => valueOf(id));
-        return { row, ids, vals };
+    // 1) Calcula los valores "normales" con valueOf (inyectando G15 si procede)
+    const temp = rep.map(row => {
+      const ids  = row.members;
+      const vals = ids.map(id => {
+        // Si estamos en G15 y tenemos etiqueta fija para este id, úsala.
+        if (galaNum === 15 && g15LabelFor) {
+          const fixed = g15LabelFor(id);
+          if (fixed) return fixed;
+        }
+        // Si no, el flujo normal
+        return valueOf(id);
       });
+      return { row, ids, vals };
+    });
 
 // 2) En Gala 14: cada persona repite su PRIMER valor en todas sus filas
 if (galaNum === 14) {
@@ -559,6 +566,38 @@ if (galaNum === 14) {
     });
   });
 }
+
+// --- GALA 15: fija Ganador / 2º / 3º en todas las filas (sin heurísticas) ---
+if (galaNum === 15) {
+  const g15 = summaries?.[galaNum]?.g15 || {};
+  const getId = (x) => (x && typeof x === "object" && "id" in x) ? x.id : x;
+
+  const winnerId = getId(g15.winner);
+  const secondId = getId(g15.second);
+  const thirdId  = getId(g15.third);
+
+  const labelFor = (id) => {
+    const eq = (a, b) => String(a) === String(b);
+    const g  = contestants.find(x => eq(x.id, id))?.gender ?? "e";
+    const winTxt = g === "m" ? "Ganador" : g === "f" ? "Ganadora" : "Ganadore";
+    const ord2  = g === "m" ? "2º" : g === "f" ? "2ª" : "2º/ª";
+    const ord3  = g === "m" ? "3er" : g === "f" ? "3ª" : "3º/ª";
+
+    if (eq(id, winnerId)) return winTxt;
+    if (eq(id, secondId)) return `${ord2} Finalista`;
+    if (eq(id, thirdId))  return `${ord3} Finalista`;
+    return null;
+  };
+
+  // Sobrescribe las celdas con la etiqueta fija correspondiente
+  temp.forEach(({ ids, vals }) => {
+    ids.forEach((id, i) => {
+      const fixed = labelFor(id);
+      if (fixed) vals[i] = fixed;
+    });
+  });
+}
+
 
 // 3) Pasa a la estructura final respetando dúos/tríos
 const nuevoRep = temp.map(({ row, ids, vals }) => ({
