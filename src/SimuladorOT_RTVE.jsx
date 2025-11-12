@@ -39,7 +39,7 @@ const uid = () => Math.random().toString(36).slice(2);
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 // Público NO influye en nominaciones (0 = desactivado; 1 = igual que antes)
 const PUBLIC_WEIGHT = 0;
-const BASE_NOM_PROB = 0.55; // base neutra de nominación
+const BASE_NOM_PROB = 0.50; // base neutra de nominación
 // const fmtPct = (n) => `${n.toFixed(2)}%`;
 const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
 const pickRandom = (arr, k = 1) => { const c=[...arr],o=[]; while(k-- > 0 && c.length){ o.push(c.splice(Math.floor(Math.random()*c.length),1)[0]); } return o; };
@@ -638,84 +638,101 @@ const nuevoRep = temp.map(({ row, ids, vals }) => ({
 //   public?: { tabla: {id,pct}[], winner: id, losers: id[] }, // votación público
 // }
 
-// Baraja valoraciones con reglas:
-//  - Nunca más de 2 nominados seguidos
-//  - El último nominado sale en penúltima o última posición
-// Baraja valoraciones con reglas fuertes para los últimos puestos:
-// - Nunca más de 2 nominados seguidos
-// - En las 3 primeras, máx 1 nominado
-    // - Se reserva 1 NOMINADO para penúltima/última y 1 OTRO para el hueco complementario
-    function buildValoracionesOrder(allIds, nomineeIds){
+    // Construye un orden aleatorio cumpliendo:
+    // - No más de `maxConsecNom` nominados seguidos en ningún punto.
+    // - Si forceMixedTail y hay de ambos tipos, los dos últimos son (N y O) en orden aleatorio.
+    // - Si no hay ambos, al menos el último es N si quedan nominados.
+    function buildValoracionesOrder(allIds, nomineeIds, { galaNum, maxConsecNom = 2, forceMixedTail = true } = {}) {
       const N = allIds.length;
-      const nomSet = new Set(nomineeIds);
-      const nom   = nomineeIds.slice();
-      const otros = allIds.filter(id => !nomSet.has(id));
+      const isNom = new Set(nomineeIds.map(String));
+      const IDsN = allIds.filter(id => isNom.has(String(id)));
+      const IDSO = allIds.filter(id => !isNom.has(String(id)));
 
-      // shuffle Fisher-Yates
-      for (let a of [nom, otros]) for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+      // Barajar pools para asignación final
+      const fy = (a) => { for (let i=a.length-1;i>0;i--) { const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
+      fy(IDsN); fy(IDSO);
 
-      // reservar 1 nominado para penúltima/última + 1 "otro" para el otro hueco
-      let slotUlt = Math.random() < 0.5 ? N-1 : N-2;
-      if (nom.length === 0) slotUlt = N-1;
-      const reservado      = nom.length ? nom.pop() : null;              // nominado
-      const slotOther      = slotUlt === N-1 ? N-2 : N-1;
-      const reservadoOtro  = (otros.length > 0) ? otros.pop() : null;    // salvado
+    // --- Preparar cola (tail) ---
+    let tail = [];
+    let needN = IDsN.length, needO = IDSO.length;
 
-      const order = [];
-      let consecNom = 0;
-      let nomInFirst3 = 0;
+    if (N >= 2 && forceMixedTail && needN > 0 && needO > 0 && tail.length === 0) {
+      tail = Math.random() < 0.5 ? ['N','O'] : ['O','N'];
+      if (tail[0] === 'N') needN--; else needO--;
+      if (tail[1] === 'N') needN--; else needO--;
+    } else {
+      // si no se puede, al menos el último es N si queda alguno
+      if (tail.length === 0) {
+        if (needN > 0) { tail = ['N']; needN--; }
+        else if (needO > 0) { tail = ['O']; needO--; }
+      }
+    }
 
-      for (let i = 0; i < N; i++) {
-        // coloca el "otro" reservado en el hueco complementario
-        if (reservadoOtro && i === slotOther) {
-          order.push(reservadoOtro);
-          consecNom = 0;
-          continue;
+
+      const L = N - tail.length; // prefijo a generar con DP
+
+      // DP: contar formas válidas desde un estado (para muestreo uniforme)
+      const memo = new Map();
+      const key = (i, n, o, r) => i+'|'+n+'|'+o+'|'+r;
+
+      function countWays(i, n, o, run) {
+        const k = key(i,n,o,run);
+        if (memo.has(k)) return memo.get(k);
+
+        if (i === L) {
+          // Validar que añadir tail no rompa el límite de consecutivos
+          let r = run;
+          for (const t of tail) {
+            if (t === 'N') { r++; if (r > maxConsecNom) { memo.set(k, 0); return 0; } }
+            else r = 0;
+          }
+          memo.set(k, 1);
+          return 1;
         }
 
-        // coloca el nominado reservado en penúltima/última (y evita 3 seguidos justo antes)
-        if (reservado && i === slotUlt) {
-          if (consecNom === 2 && otros.length) { order.push(otros.pop()); consecNom = 0; i++; }
-          order.push(reservado);
-          consecNom++;
-          if (i < 3) nomInFirst3++;
-          continue;
-        }
-
-        // reglas generales
-        const earlyCap   = (i < 3 && nomInFirst3 >= 1);                   // primeras 3: máx 1 nominado
-        const puedeNom   = nom.length > 0 && consecNom < 2 && !earlyCap;
-
-        // huecos restantes sin contar los reservados que aún no han salido
-        const reservedAhead = (reservado && i < slotUlt ? 1 : 0) + (reservadoOtro && i < slotOther ? 1 : 0);
-        const slotsRestantes = (N - i) - reservedAhead;
-
-        // balance: si los nominados restantes casi llenan los huecos no reservados, empuja un "otro" ahora
-        const debeEquilibrar = puedeNom && nom.length >= (slotsRestantes - 1);
-
-        // al entrar en los 3 últimos huecos, rompe rachas de 2 nominados
-        if (i >= N - 3 && consecNom === 2 && otros.length) {
-          order.push(otros.pop());
-          consecNom = 0;
-          continue;
-        }
-
-        // decisión
-        let pick = null;
-        if (!debeEquilibrar && (puedeNom && Math.random() < 0.5)) {
-          pick = nom.pop();
-          consecNom++;
-          if (i < 3) nomInFirst3++;
-        } else {
-          pick = otros.pop();
-          if (pick == null) { pick = nom.pop(); consecNom++; if (i < 3) nomInFirst3++; }
-          else { consecNom = 0; }
-        }
-        order.push(pick);
+        let ways = 0;
+        if (n > 0 && run < maxConsecNom) ways += countWays(i+1, n-1, o, run+1);
+        if (o > 0)                         ways += countWays(i+1, n,   o-1, 0);
+        memo.set(k, ways);
+        return ways;
       }
 
-      return order;
+      // Muestreo guiado por el conteo
+      const pattern = new Array(N).fill(null);
+      let n = needN, o = needO, run = 0;
+      for (let i = 0; i < L; i++) {
+        const wN = (n > 0 && run < maxConsecNom) ? countWays(i+1, n-1, o, run+1) : 0;
+        const wO = (o > 0) ? countWays(i+1, n, o-1, 0) : 0;
+        const total = wN + wO;
+
+        let chooseN = false;
+        if (total === 0) chooseN = (n > 0 && run < maxConsecNom); // salvaguarda
+        else chooseN = Math.random() * total < wN;
+
+        if (chooseN) { pattern[i] = 'N'; n--; run++; }
+        else         { pattern[i] = 'O'; o--; run = 0; }
+      }
+      for (let j = 0; j < tail.length; j++) pattern[L + j] = tail[j];
+
+      // 🩵 Ajuste adicional para G7–G8:
+      // Evita terminar con dos nominados seguidos (NN) forzando un salvado antes del último.
+      if (galaNum >= 7 && galaNum <= 8 && forceMixedTail) {
+        if (pattern[pattern.length - 1] === 'N' && pattern[pattern.length - 2] === 'N') {
+          pattern[pattern.length - 2] = 'O'; // fuerza un salvado antes del último nominado
+        }
+      }
+
+      // Asignar IDs en orden aleatorio dentro de cada tipo
+      const out = [];
+      let pN = 0, pO = 0;
+      for (const t of pattern) {
+        out.push(t === 'N' ? IDsN[pN++] : IDSO[pO++]);
+      }
+      return out;
     }
+
+
+
 
 
 function detectGender(token){
@@ -891,6 +908,10 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         namesInput,      // por si quieres reimprimir la lista inicial
         songsReady,      // opcional
         manual,
+        carryNominees,
+        galaLogs,
+        songs,
+        songsMeta,
       };
     }
 
@@ -906,6 +927,47 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
       setViewGala(payload.viewGala ?? payload.gala ?? 1);
       setStage(payload.stage || "inicio");
       if (typeof payload.manual === "boolean") setManual(payload.manual);
+        // 👇 Nuevo: restaurar duelistas arrastrados.
+        // Si la partida antigua no lo trae, intenta inferirlos de la gala anterior.
+        try {
+        const g = payload.gala ?? 1;
+          const inferred =
+            (g >= 2 && g <= 11)
+              ? (payload.summaries?.[g - 1]?.finalNominees || [])
+              : [];
+          setCarryNominees(
+            Array.isArray(payload.carryNominees) && payload.carryNominees.length
+            ? payload.carryNominees
+              : inferred
+          );
+        } catch {
+          setCarryNominees([]);
+        }
+
+       // 📝 Historial por gala (Gala X)
+       setGalaLogs(payload.galaLogs || {});   // ← mantiene los logs mostrados en la pestaña “historial”
+
+       // 🎵 Catálogo/metadatos de canciones (opcional, para continuar partidas coherentemente)
+       if (Array.isArray(payload.songs)) setSongs(payload.songs);
+       if (payload.songsMeta && typeof payload.songsMeta === "object") setSongsMeta(payload.songsMeta);
+       if (typeof payload.songsReady === "boolean") setSongsReady(payload.songsReady);
+
+       // ⚔️ Duelistas arrastrados (G2–G11 y salto G11→G12)
+       try {
+         const g = payload.gala ?? 1;
+         const inferred =
+           (g >= 2 && g <= 11)
+             ? (payload.summaries?.[g - 1]?.finalNominees || [])
+             : (g === 12 ? (payload.summaries?.[11]?.finalNominees || []) : []);
+         setCarryNominees(
+           Array.isArray(payload.carryNominees) && payload.carryNominees.length
+             ? payload.carryNominees
+             : inferred
+         );
+       } catch {
+         setCarryNominees([]);
+       }
+
     }
 
       useEffect(() => {
@@ -1079,7 +1141,7 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
 
         setGstate({
           publicRank: [], top3: [], top3Pct: undefined, favoritoId: undefined, top3Shown: false,
-          evaluacionOrden: shuffle(vivos.map(v => v.id)), evalResults: [], salvados: new Set(),
+          evaluacionOrden: [], evalResults: [], salvados: new Set(),
           nominados: [], profesorSalvoId: undefined, votosCompaneros: [], salvadoCompanerosId: undefined,
           currentEvaluadoId: undefined, currentEvaluadoLogIndex: undefined, g12: undefined, g15: undefined
         });
@@ -1200,7 +1262,7 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
 
     try {
       setContestants(inits);
-      setPendingRealRoster(null); // limpia la plantilla para la siguiente vez
+      //setPendingRealRoster(null); // limpia la plantilla para la siguiente vez
       setGala(0);
       setViewGala(0); // 👈 asegura que ves la Gala 0 en el historial
       setStage("gala0");
@@ -2199,8 +2261,17 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
       if (!gstate.evaluacionOrden || gstate.evaluacionOrden.length === 0) {
         const vivosIds   = contestants.filter(c => c.status === "active").map(c => c.id);
         const favId      = gstate.favoritoId || null;
-        const nomineeIds = favId ? vivosIds.filter(id => id !== favId) : [...vivosIds];
-        const ordenValoraciones = buildValoracionesOrder(vivosIds, nomineeIds);
+        const vivosSinFav = favId ? vivosIds.filter(id => id !== favId) : vivosIds;
+        const nomineeIds = []; // no “marcamos” N/O por adelantado
+      // --- Construir orden según reglas por gala ---
+      const maxConsec = gala <= 8 ? 1 : 2;
+
+      const ordenValoraciones = buildValoracionesOrder(vivosSinFav, nomineeIds, {
+        galaNum: gala,         // <- usar la variable correcta
+        maxConsecNom: maxConsec,
+        forceMixedTail: true
+      });
+
 
         setGstate(st => ({
           ...st,
@@ -2225,12 +2296,18 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
 
       // 2) Abrir “ficha” si no hay evaluado actual
       if (!gstate.currentEvaluadoId) {
-        const pend = gstate.evaluacionOrden
-          .filter(id => vivos.includes(id) && !gstate.salvados.has(id) && !gstate.nominados.includes(id));
+      const yaEvaluados = new Set(gstate.evalResults.map(r => r.id));
+      const pend = gstate.evaluacionOrden
+        .filter(id =>
+          vivos.includes(id) &&
+          !gstate.nominados.includes(id) &&
+          id !== gstate.favoritoId &&           // inmune: no se evalúa
+          !yaEvaluados.has(id)                  // evita repetir
+        );
 
         if (!pend.length) {
           let nominados = [ ...gstate.nominados ];
-          const rest = gstate.evaluacionOrden.filter(id => !gstate.salvados.has(id) && !nominados.includes(id));
+          const rest = gstate.evaluacionOrden.filter(id => !gstate.salvados.has(id) && !nominados.includes(id)); 
           while (nominados.length < 4 && rest.length) nominados.push(rest.shift());
 
           setGstate({ ...gstate, nominados, currentEvaluadoId: undefined, currentEvaluadoLogIndex: undefined });
@@ -2256,13 +2333,33 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
       const logIdx = gstate.currentEvaluadoLogIndex ?? (galaLogs[gala]?.length || 1) - 1;
 
       // reconstruir pendientes (id primero)
+      const yaEvaluados = new Set(gstate.evalResults.map(r => r.id));
       let pend = gstate.evaluacionOrden
-        .filter(x => vivos.includes(x) && !gstate.salvados.has(x) && !gstate.nominados.includes(x));
+        .filter(x =>
+          vivos.includes(x) &&
+          !gstate.nominados.includes(x) &&
+          x !== gstate.favoritoId &&
+          !yaEvaluados.has(x)
+        );
       if (pend[0] !== id) pend = [ id, ...pend.filter(x => x !== id) ];
 
       const remaining = pend.length;
       const needed = 4 - gstate.nominados.length;
       let plan = gstate.finalTwoPlan;
+
+      // --- GUARDARRAÍLES DE FORMATO ---
+      const maxConsec = gala <= 8 ? 1 : 2;
+      // Traducimos tus resultados reales ("nominado"/"salvado") a 'N'/'O'
+      const hechos = gstate.evalResults.map(r => r.result === "nominado" ? "N" : "O");
+
+      let consecN = 0;
+      for (let i = hechos.length - 1; i >= 0 && hechos[i] === "N"; i--) consecN++;
+
+      let fuerzaO = false;
+      // 1) Nunca más de maxConsec 'N' seguidos
+      if (consecN >= maxConsec) fuerzaO = true;
+      // 2) En los dos últimos debe haber al menos un 'O'
+      if (remaining === 2 && hechos[hechos.length - 1] === "N") fuerzaO = true;
 
       // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
       // MODO MANUAL: decidir “salvado” o “nominado” para el evaluado actual
@@ -2322,6 +2419,35 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         return;
       }
 
+      // (b-bis) G1–8: Quedan 4 por evaluar y faltan ≥3 → forzar NOMINADO ahora
+      if (gala <= 8 && remaining === 4 && needed >= 3) {
+          // si ya llevamos el máximo de N seguidas y AÚN HAY MARGEN, no fuerces N aquí
+        const maxConsec = (gala <= 6 ? 1 : 2);
+        const hechos = gstate.evalResults.map(r => r.result === "nominado" ? "N" : "O");
+        let consecN = 0; for (let i = hechos.length - 1; i >= 0 && hechos[i] === "N"; i--) consecN++;
+        const hayMargen = needed < remaining;
+        if (consecN >= maxConsec && hayMargen) {
+          writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → cruza la pasarela.`);
+          const salvados = new Set(gstate.salvados); salvados.add(id);
+          setGstate({ ...gstate, currentEvaluadoId: undefined, currentEvaluadoLogIndex: undefined,
+            salvados, evalResults: [ ...gstate.evalResults, { id, result: "salvado" } ],
+            finalTwoPlan: undefined, evaluacionOrden: gstate.evaluacionOrden.filter(x => x !== id)
+          });
+          return;
+        }
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>${NOM(id)}</strong>.`);
+        setGstate({
+          ...gstate,
+          currentEvaluadoId: undefined,
+          currentEvaluadoLogIndex: undefined,
+          nominados: [ ...gstate.nominados, id ],
+          evalResults: [ ...gstate.evalResults, { id, result: "nominado" } ],
+          evaluacionOrden: gstate.evaluacionOrden.filter(x => x !== id),
+          finalTwoPlan: undefined,
+        });
+        return;
+      }
+
       // (b) Quedan 4 por evaluar y faltan ≥3 nominados → forzar NOMINADO ahora
       if (gala === 9 && remaining === 4 && needed >= 3) {
         writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>${NOM(id)}</strong>.`);
@@ -2368,12 +2494,36 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         return;
       }
 
-      // 3B) DOS ÚLTIMAS: SIEMPRE 1 NOMINADO y 1 SALVADO (orden aleatorio)
+      // 3B) DOS ÚLTIMAS
       if (remaining === 2) {
-        plan = (needed <= 0)
-          ? ["salvado", "salvado"]
-          : (Math.random() < 0.5 ? ["nominado", "salvado"] : ["salvado", "nominado"]);
+        const last = gstate.evalResults.slice(-1)[0]?.result; // "nominado" | "salvado"
+      if (needed >= 2) {
+        // Faltan 2 nominados y quedan 2 personas → N,N
+        plan = ["nominado", "nominado"];
+      } else if (needed <= 0) {
+        plan = ["salvado", "salvado"];
+      } else {
+        // En Galas 1–8 evita repetir con la anterior
+        if (gala <= 8 && last === "nominado") plan = ["salvado", "nominado"];
+        else plan = Math.random() < 0.5 ? ["nominado","salvado"] : ["salvado","nominado"];
+      }
         setGstate({ ...gstate, finalTwoPlan: plan });
+      }
+
+      // 3A-guard ALL: evita llegar a las dos últimas necesitando 2 nominados
+      if (remaining > 2 && (remaining - needed) <= 1) {
+        // Forzar NOMINADO ya para no pedir N,N en las dos últimas
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → <strong>${NOM(id)}</strong>.`);
+        setGstate({
+          ...gstate,
+          currentEvaluadoId: undefined,
+          currentEvaluadoLogIndex: undefined,
+          nominados: [ ...gstate.nominados, id ],
+          evalResults: [ ...gstate.evalResults, { id, result: "nominado" } ],
+          evaluacionOrden: gstate.evaluacionOrden.filter(x => x !== id),
+          finalTwoPlan: undefined,
+        });
+        return;
       }
 
       // 3C) Decisión “normal” (con ventanas y performance)
@@ -2386,13 +2536,14 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
       else if (remaining === 2 && plan) {
         decision = plan[0];
       }
-      else if (evIndex < 3 && gstate.nominados.length >= 1) {
-        decision = "salvado"; // primeras 3: máx 1 nominado
+      // Solo aplica a partir de la G9; en G1–G8 no capamos las 3 primeras
+      else if (gala >= 9 && evIndex < 3 && gstate.nominados.length >= 1) {
+        decision = "salvado";
       }
       else {
         const last3 = gstate.evalResults.slice(-3).map(r => r.result);
         const nomsInLast3 = last3.filter(x => x === "nominado").length;
-        if (nomsInLast3 >= 2) {
+        if (nomsInLast3 >= 2 && needed < remaining) {
           decision = "salvado";
         } else {
           const votePct  = gstate.publicRank.find(r => r.id === id)?.pct ?? 50;
@@ -2452,6 +2603,54 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         nomAfter  = gstate.nominados.length + 1;
         remAfter  = remaining - 1;
       }
+
+    // —— Límite de racha de SALVADOS en Galas 1–8: no más de 5 seguidos
+    if (gala <= 4 && remaining > 2 && needed > 0) {
+      let salvadosRun = 0;
+      for (let i = gstate.evalResults.length - 1; i >= 0; i--) {
+        if (gstate.evalResults[i]?.result === "salvado") salvadosRun++;
+        else break;
+      }
+      if (salvadosRun >= 5 && decision === "salvado") {
+        // Solo forzamos si sigue siendo posible llegar a 4 nominados
+        const nomIfForce  = gstate.nominados.length + 1;
+        const remIfForce  = remaining - 1;
+        const needIfForce = 4 - nomIfForce;
+        if (needIfForce <= remIfForce) {
+          decision = "nominado";
+        }
+      }
+    }
+
+    // —— Asegurar “mixto” en los dos últimos (G1–G8):
+    // si quedan 3 por evaluar y todavía faltan 2 nominados,
+    // forzamos que ESTE sea nominado para que los dos últimos queden mezclados.
+    if (gala <= 8 && remaining === 3 && needed === 2) {
+      decision = "nominado";
+    }
+
+
+    // —— Freno "no 2 seguidos" para Galas 1–8 (excepto si lo hace imposible llegar a 4)
+    const last = gstate.evalResults.slice(-1)[0]?.result;
+    if (gala <= 8 && remaining > 2 && decision === "nominado" && last === "nominado") {
+      // ¿Podemos cambiar a salvado y seguir pudiendo llegar a 4?
+      const nomIfFlip = gstate.nominados.length;      // si salvamos ahora no sumamos nom
+      const remIfFlip = remaining - 1;
+      const needIfFlip = 4 - nomIfFlip;
+      if (needIfFlip <= remIfFlip) {
+        decision = "salvado"; // Evita dos seguidos
+      }
+    }  
+    
+    if (fuerzaO && needed < remaining) decision = "salvado";
+
+    // 🔚 Chequeo final: debe seguir siendo posible llegar a 4 nominados
+    {
+      const nomAfter  = gstate.nominados.length + (decision === "nominado" ? 1 : 0);
+      const remAfter  = remaining - 1;
+      const needAfter = 4 - nomAfter;
+      if (needAfter > remAfter) decision = "nominado";
+    }
 
       // 3D) Aplicar
       if (decision === "nominado" && gstate.nominados.length < 4) {
@@ -3518,7 +3717,18 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
         <img
           src="/LogoOT2017_Negro.png"
           alt="Simulador Web de Operación Triunfo"
-          className="h-auto max-h-16 sm:max-h-20 md:max-h-[6.75rem] w-auto object-contain shrink-0"
+          className="h-auto max-h-16 sm:max-h-20 md:max-h-[6.75rem] w-auto object-contain shrink-0 cursor-pointer hover:opacity-80 transition"
+          onClick={() => {
+            // 🧹 Igual que el botón Reiniciar
+            setContestants([]);
+            setGala(1);
+            setViewGala(1);
+            setGalaLogs({});
+            setCarryNominees([]);
+            setStage("inicio");
+            setGstate(null);
+            setSummaries({});
+          }}
         />
         <div className="flex gap-2 w-full sm:w-auto">
           {canPickRoster && (
@@ -3555,7 +3765,7 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
           </p>
           <p className="text-xs text-muted-foreground">
             El género se escribe para que la Tabla de Recorrido trate a cada concursante por el género que le corresponda.
-            Si no se selecciona un género este
+            Si no se selecciona un género este será No Binario por defecto.
           </p>
 
           <Textarea rows={12} value={namesInput} onChange={(e) => setNamesInput(e.target.value)} />
@@ -3587,7 +3797,7 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
                   value={mode}
                   onChange={(e) => onModeChange?.(e.target.value)}
                 >
-                  <option value="telecinco">OT (Telecinco, 2001–2011)</option>
+                  <option value="telecinco">OT (Telecinco, 2005–2011)</option>
                   <option value="rtve">OT (RTVE, 2017–2020)</option>
                 </select>
               </div>
@@ -3645,6 +3855,10 @@ export default function SimuladorOT_RTVE({ mode, onModeChange }) {
     >
       ⬇️ Cargar
     </Button>
+
+          <p className="text-xs text-muted-foreground">
+           Antes de <strong>cargar</strong> un simulador selecciona primero el Modo en el qué jugaste a ese simulador.
+          </p>
 
       <center><p className="text-xs text-muted-foreground"><strong>Simulador OT (2025)</strong> - Para cualquier duda o sugerencia escríbenos a otsimulador@gmail.com</p></center>
 
