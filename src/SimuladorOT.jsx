@@ -1,13 +1,36 @@
+import { resolveRepechage, displayGala, nextGala, visibleGalas, galaLog, lastElimination } from "./lib/seasonSchedule";
+import RepechageReveal from "./components/RepechageReveal";
+import { useRepechage, repechageCell, absentAfterElimination } from "./lib/repechage";
+import TablePerson from "./components/TablePerson";
+import { useMusicBackground } from "./lib/audio";
+import RelationshipsTable from "./components/RelationshipsTable";
+import { choosePeerSave } from "./lib/relationships";
+import { selectPerformanceNominees, mixedJuryOrder, manualJuryOptions } from "./lib/juryPerformance";
+import ChatReveal from "./components/ChatReveal";
 import React, { useMemo, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import SeasonSettings from "./components/SeasonSettings";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toPng } from 'html-to-image';
 import OTRosterPicker from "./components/OTRosterPicker";
 import LZString from "lz-string";
+import JuryEvaluation from "./components/JuryEvaluation";
+import FavoriteReveal from "./components/FavoriteReveal";
+import SaveCeremony from "./components/SaveCeremony";
+import ScoreReveal from "./components/ScoreReveal";
+import PublicReveal from "./components/PublicReveal";
+import AcademyWeek, { JudgeSetup, AcademySummary } from "./components/AcademyWeek";
+import PopularityTable from "./components/PopularityTable";
+import { useAcademySeason, emptyAcademy } from "./lib/useAcademySeason";
+import { audiencePercentages, favoriteRanking, performanceNominationModifier } from "./lib/academy";
+import GalaZeroReveal from "./components/GalaZeroReveal";
+import { prepareGalaZeroJury } from "./lib/galaZeroReveal";
+import { createPublicReveal, assignPublicPercentage } from "./lib/publicReveal";
+import { captureScoreResult, alignFinalistScores, scoreEvents } from "./lib/scoreReveal";
+import { runJuryReveal, blindDuelPercentages } from "./lib/juryReveal";
 
 // ——— helpers para (de)serializar Sets/Maps ———
 const replacer = (_k, v) => {
@@ -131,7 +154,7 @@ function fmtPct(n){
   }
 
   function pickProfSave(doubtIds, summaries, galaIndex, fallbackFn, curList) {
-    if (galaIndex >= 0 && galaIndex <= 9) {
+    if (galaIndex >= 0 && galaIndex <= 11) {
       return pickProfSaveByFewestNoms(doubtIds, summaries, galaIndex, curList);
     }
     return fallbackFn ? fallbackFn(doubtIds) : Array.from(doubtIds)[0];
@@ -172,8 +195,11 @@ const normSong = s =>
 function getUsedSongsUpTo(summaries, g) {
   const used = new Set();
   for (let k = 0; k < g; k++) {
+    const groupSong = summaries?.[k]?.[k]?.groupSong;
+    if (groupSong) used.add(normSong(groupSong));
     const rep = summaries?.[k]?.[k]?.reparto || [];
     rep.forEach(r => { if (r.song) used.add(normSong(r.song)); });
+    (summaries?.[k]?.repechage?.performances || []).forEach(p=>{if(p.song) used.add(normSong(p.song));});
   }
   return used;
 }
@@ -190,7 +216,7 @@ function getSoloSongsForIdInRange(summaries, id, fromG = 4, toG = Infinity) {
   return out;
 }
 
-// Asigna canciones cumpliendo todas las reglas (incluida la Final G15)
+// Asigna canciones cumpliendo todas las reglas (incluida la Final G17)
 function buildRepartoConCanciones({ galaNum, reparto, summaries, allSongs }) {
   const usedBefore = getUsedSongsUpTo(summaries, galaNum);
   const usedThisGala = new Set();
@@ -220,13 +246,14 @@ function buildRepartoConCanciones({ galaNum, reparto, summaries, allSongs }) {
     return s;
   };
 
-  return reparto.map(row => {
+  const groupSong = pickFresh();
+  const assigned = reparto.map(row => {
     const copy = { ...row };
     if (copy.type === "solo") {
       const id = copy.members[0];
       seenCount.set(id, (seenCount.get(id) || 0) + 1);
 
-      if (galaNum === 15 && seenCount.get(id) === 2) {
+      if (galaNum === 17 && seenCount.get(id) === 2) {
         copy.song = pickFromPastSolos(id) || pickFresh();
       } else {
         copy.song = pickFresh();
@@ -237,6 +264,7 @@ function buildRepartoConCanciones({ galaNum, reparto, summaries, allSongs }) {
     }
     return copy;
   });
+  return { reparto: assigned, groupSong };
 }
 
 // Busca qué canción tiene asignada un concursante en la gala actual
@@ -282,6 +310,7 @@ function performanceModifier(stats, req){
 // === REPARTO DE TEMAS =======================================================
 
     function repartoPlan(g){
+      if (g === 10 || g === 11) return {trios:0,duos:1,solos:Infinity};
       if (g === 0)  return { trios:0, duos:0, solos:Infinity }; // 18 solos
       if (g === 1)  return { trios:0, duos:8,  solos:0  };
       if (g === 2)  return { trios:2, duos:5,  solos:0  };
@@ -292,11 +321,11 @@ function performanceModifier(stats, req){
       if (g === 7)  return { trios:0, duos:3,  solos:3  };
       if (g === 8)  return { trios:0, duos:2,  solos:4  };
       if (g === 9)  return { trios:0, duos:1,  solos:5  };
-      if (g === 10) return { trios:0, duos:0,  solos:6  };
-      if (g === 11) return { trios:0, duos:0,  solos:5  };
-      if (g === 12 || g === 13) return { trios:0, duos:0, solos:Infinity };
-      if (g === 14) return { trios:0, duos:2,  solos:Infinity };
-      if (g === 15) return { trios:0, duos:0,  solos:Infinity };
+      if (g === 12) return { trios:0, duos:0,  solos:6  };
+      if (g === 13) return { trios:0, duos:0,  solos:5  };
+      if (g === 14 || g === 15) return { trios:0, duos:0, solos:Infinity };
+      if (g === 16) return { trios:0, duos:2,  solos:Infinity };
+      if (g === 17) return { trios:0, duos:0,  solos:Infinity };
       return { trios:0, duos:0, solos:Infinity };
     }
 
@@ -320,16 +349,16 @@ function performanceModifier(stats, req){
       // El “resto” disponible para otras asignaciones
       let baseSet = activosIds.filter(id => !nomSet.has(id));
 
-      // ⭐️ GALA 14: solo 4 solistas (sin dúos)
-      if (galaNum === 14) {
+      // ⭐️ GALA 16: solo 4 solistas (sin dúos)
+      if (galaNum === 16) {
         // Solos de los 4 finalistas
         baseSet.forEach(id => filas.push({ type:'solo', members:[id], song:'', valor:'' }));
         return filas;
       }
 
 
-      // ⭐️ GALA 15: 3 solos + 3 solos (los mismos 3, segunda canción)
-      if (galaNum === 15) {
+      // ⭐️ GALA 17: 3 solos + 3 solos (los mismos 3, segunda canción)
+      if (galaNum === 17) {
         // Primera ronda (3 solos)
         baseSet.forEach(id => filas.push({ type:'solo', members:[id], song:'', valor:'' }));
         // Segunda ronda (los mismos 3 otra vez)
@@ -337,7 +366,7 @@ function performanceModifier(stats, req){
         return filas;
       }
 
-      // ⬇️ Lógica genérica (G0–G13 y G11 ya funciona con pool correcto)
+      // ⬇️ Lógica genérica (G0–G15 y G13 ya funciona con pool correcto)
       const plan = repartoPlan(galaNum);
 
       if (plan.trios){
@@ -369,10 +398,10 @@ function performanceModifier(stats, req){
 
       const rep = S[galaNum].reparto.map(r => ({ ...r }));
 
-      // Solo en Gala 14
-        const valorPorId = galaNum === 14 ? {} : null;
+      // Solo en Gala 16
+        const valorPorId = galaNum === 16 ? {} : null;
 
-        // Prioridad para unificar la valoración de G14
+        // Prioridad para unificar la valoración de G16
         const scoreValor = (txt) => {
           const v = (txt || "").toLowerCase();
           if (v.includes("finalista")) return 3; // 6º/5º/4º Finalista (o cualquier "Finalista")
@@ -390,8 +419,8 @@ function performanceModifier(stats, req){
 
       // Datos base de ESTA gala
       const jurNoms  = new Set(S.juradoNominados || []);
-      const prof     = S.profesorSalvoId ?? null;        // G1–9 y también se usa en G10 (4º finalista)
-      const comp     = S.salvadoCompanerosId ?? null;    // G1–9 y G10 (5º finalista)
+      const prof     = S.profesorSalvoId ?? null;        // G1–9 y también se usa en G12 (4º finalista)
+      const comp     = S.salvadoCompanerosId ?? null;    // G1–9 y G12 (5º finalista)
       const finalTwo = new Set(S.finalNominees || []);   // los dos que van a duelo (G1–9)
 
       const favId   = S.favoritoId ?? null;
@@ -405,8 +434,8 @@ function performanceModifier(stats, req){
         const sufG = suf(g);
         const parts = [];
 
-        // G14: recordar lo que ya calculamos antes para este concursante (si existe)
-        const cachedPrev = (galaNum === 14 && valorPorId) ? valorPorId[id] : undefined;
+        // G16: recordar lo que ya calculamos antes para este concursante (si existe)
+        const cachedPrev = (galaNum === 16 && valorPorId) ? valorPorId[id] : undefined;
 
         // 0) Si el duelo se RESUELVE en esta gala, priorizar siempre ese resultado
         if (duelNow) {
@@ -417,7 +446,7 @@ function performanceModifier(stats, req){
           if (id === loser) {
             const pct = id === a ? pctA : pctB;
             const out = `Expulsad${sufG} por el público (${pct.toFixed(2)}%)`;
-            if (galaNum === 14 && valorPorId) {
+            if (galaNum === 16 && valorPorId) {
               if (!cachedPrev || scoreValor(out) >= scoreValor(cachedPrev)) {
                 valorPorId[id] = out;
               } else {
@@ -439,11 +468,11 @@ function performanceModifier(stats, req){
           parts.push(`Salvad${sufG} por el público (${duelSaved[id].toFixed(2)}%)`);
         }
 
-  // … A PARTIR DE AQUÍ SIGUE TU CÓDIGO EXISTENTE (G1–9, G10, etc.)
+  // … A PARTIR DE AQUÍ SIGUE TU CÓDIGO EXISTENTE (G1–9, G12, etc.)
 
 
           // 1.5) FAVORIT@ DEL PÚBLICO (G1–G9) → Inmune, se detiene aquí
-        if (galaNum <= 9 && favId && id === favId) {
+        if (galaNum <= 11 && favId && id === favId) {
           const idsTop = Array.isArray(S.top3Ids) ? S.top3Ids : [];
           const idx = idsTop.indexOf(id);
           const pct = (idx >= 0 && typeof top3Pct[idx] === "number") ? top3Pct[idx] : undefined;
@@ -452,7 +481,7 @@ function performanceModifier(stats, req){
         }
 
         // 2) Decisión del jurado/profes/compañeros en ESTA gala (G1–9)
-        if (galaNum <= 9) {
+        if (galaNum <= 11) {
         // prefijo si ya venía de "Salvado por el público (%)" (o de esta misma gala)
         const prefix = parts.length ? parts.join(" > ") + " > " : "";
 
@@ -485,8 +514,8 @@ function performanceModifier(stats, req){
         }
       }
 
-      // 3) Reglas específicas de la GALA 10
-      if (galaNum === 10) {
+      // 3) Reglas específicas de la GALA 12
+      if (galaNum === 12) {
       const g10 = S.g10 || {};
       const top3 = new Set(g10.top3 || []);
       const cuarto = S.profesorSalvoId || g10.cuarto || null;
@@ -512,7 +541,7 @@ function performanceModifier(stats, req){
         return `${prefix}Salvad${sufG} por el jurado > Finalista`;
       }
 
-      // 2) Si NO es finalista pero está entre los nominados que pasan a G11
+      // 2) Si NO es finalista pero está entre los nominados que pasan a G13
       if (nominadosG11.has(id)) {
         const g = getG(id), sufG = suf(g);
         const prefix = parts.length ? parts.join(" > ") + " > " : "";
@@ -523,9 +552,9 @@ function performanceModifier(stats, req){
 
 
 
-        // 4) G11–G15 se tratan en otras rutinas; si aquí no tocó nada especial, devolver lo acumulado
+        // 4) G13–G17 se tratan en otras rutinas; si aquí no tocó nada especial, devolver lo acumulado
         const out = parts.join(" > ");
-        if (galaNum === 14 && valorPorId) {
+        if (galaNum === 16 && valorPorId) {
           // si ya había un valor para este concursante, comparamos prioridades
           if (!cachedPrev || scoreValor(out) >= scoreValor(cachedPrev)) {
             valorPorId[id] = out;   // pisa si el nuevo es más fuerte (Finalista/Duelo > Salvado)
@@ -538,12 +567,12 @@ function performanceModifier(stats, req){
 
       };
 
-    // 1) Calcula los valores "normales" con valueOf (inyectando G15 si procede)
+    // 1) Calcula los valores "normales" con valueOf (inyectando G17 si procede)
     const temp = rep.map(row => {
       const ids  = row.members;
       const vals = ids.map(id => {
-        // Si estamos en G15 y tenemos etiqueta fija para este id, úsala.
-        if (galaNum === 15 && g15LabelFor) {
+        // Si estamos en G17 y tenemos etiqueta fija para este id, úsala.
+        if (galaNum === 17 && g15LabelFor) {
           const fixed = g15LabelFor(id);
           if (fixed) return fixed;
         }
@@ -553,8 +582,8 @@ function performanceModifier(stats, req){
       return { row, ids, vals };
     });
 
-// 2) En Gala 14: cada persona repite su PRIMER valor en todas sus filas
-if (galaNum === 14) {
+// 2) En Gala 16: cada persona repite su PRIMER valor en todas sus filas
+if (galaNum === 16) {
   const firstById = {}; // id -> primer valor visto para ese id
   temp.forEach(({ ids, vals }) => {
     ids.forEach((id, idx) => {
@@ -567,8 +596,8 @@ if (galaNum === 14) {
   });
 }
 
-// --- GALA 15: fija Ganador / 2º / 3º en todas las filas (sin heurísticas) ---
-if (galaNum === 15) {
+// --- GALA 17: fija Ganador / 2º / 3º en todas las filas (sin heurísticas) ---
+if (galaNum === 17) {
   const g15 = summaries?.[galaNum]?.g15 || {};
   const getId = (x) => (x && typeof x === "object" && "id" in x) ? x.id : x;
 
@@ -780,8 +809,8 @@ function runSelfTests(){
   return results;
 }
 
-export default function SimuladorOT({ mode, onModeChange }) {
-  const [namesInput, setNamesInput] = useState("");
+export default function SimuladorOT({ repechageOption, setRepechageOption, judgeNames, setJudgeNames, mode, onModeChange, roster, setRoster, manual, setManual, popularityEnabled = true, setPopularityEnabled, relationshipsEnabled = true, setRelationshipsEnabled, loadedSeason, onLoadSeason, onLoadedSeason }) {
+  const [namesInput, setNamesInput] = useState(roster.map(p => `${p.name} - ${p.gender === "m" ? "él" : p.gender === "f" ? "ella" : "elle"}`).join("\n"));
   const [contestants, setContestants] = useState([]);
   const [gala, setGala] = useState(1);
   const [viewGala, setViewGala] = useState(1);
@@ -791,32 +820,28 @@ export default function SimuladorOT({ mode, onModeChange }) {
   const [gstate, setGstate] = useState({});
   const [summaries, setSummaries] = useState({});
   const [testResults, setTestResults] = useState([]);
-  // ✅ Estado persistente para el modo manual (usará localStorage)
-  const [manual, setManual] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("ot_manual") || "false");
-    } catch {
-      return false;
-    }
-  });
-
-  useEffect(() => {
-    localStorage.setItem("ot_manual", JSON.stringify(manual));
-  }, [manual]);
   const [photoByName, setPhotoByName] = useState(new Map());
-  const [route, setRoute] = useState("home");           // "home" | "selector"
-  const [pendingRealRoster, setPendingRealRoster] = useState(null); // guarda objetos seleccionados
-  const clearTypedList = () => {
-    setNamesInput("");           // vacía el textarea
-    setPendingRealRoster(null);  // opcional: limpia plantillas importadas
+  const updateRoster = (picked) => {
+    setRoster(picked);
+    setNamesInput(picked.map(p => `${p.name} - ${p.gender === "m" ? "él" : p.gender === "f" ? "ella" : "elle"}`).join("\n"));
   };
+
 
 
   // 🆕 Nuevo estado para las canciones
   const [songs, setSongs] = useState([]);
   const [songsReady, setSongsReady] = useState(false);
+  const [songsMetaReady, setSongsMetaReady] = useState(false);
   const [songsMeta, setSongsMeta] = useState({}); // { title -> {afinacion, baile, presencia, emocion} }
 
+
+  const { academy, setAcademy, week: academyWeek, reparto: academyReparto, blocked: academyBlocked, next: advanceAcademy, skipPerformances, chat: academyChat, chatGala, nextChat, skipEvents, skipChat } = useAcademySeason({ contestants, setContestants, summaries, setSummaries, gala, songsMeta, stage, mode });
+  const repechageEnabled = academy.repechageEnabled !== false;
+  const shownGala = n => displayGala(n,repechageEnabled);
+  useMusicBackground(!contestants.length ? mode : !academyWeek || academyWeek.phase === "events" ? mode : !academyWeek.done || stage === "galaCerrada" || (stage === "repechage" && gstate.repechage?.phase === "performances") ? null : "tension", `${mode}-${gala}`);
+  const [showPopularity, setShowPopularity] = useState(false);
+  const [showRelationships, setShowRelationships] = useState(false);
+  const seasonFinished = stage === "galaCerrada" && Boolean(summaries[17]?.g15?.winner || summaries[15]?.winner);
 
   const SAVE_VERSION = 1;
 
@@ -824,6 +849,10 @@ export default function SimuladorOT({ mode, onModeChange }) {
     // ojo con Maps/Sets: el 'replacer' de arriba los convierte
     return {
       v: SAVE_VERSION,
+      popularityEnabled,
+      relationshipsEnabled,
+      repechageOption,
+      academy,
       mode,            // "telecinco" | "rtve"
       contestants,     // [{ id, name, gender, photo, stats, status, ... }]
       gala,
@@ -845,7 +874,14 @@ export default function SimuladorOT({ mode, onModeChange }) {
       if (!payload || payload.v !== SAVE_VERSION) throw new Error("Versión de guardado incompatible");
 
       // Restaura en este orden para que la UI no parpadee raro:
-      setContestants(payload.contestants || []);
+      setContestants((payload.contestants || []).map(c => ({ ...c, popularity: c.popularity ?? 50 })));
+      setAcademy(payload.academy || { ...emptyAcademy(), judges: ["Juez 1", "Juez 2", "Juez 3", "Juez 4"], weeks: { [payload.gala ?? 1]: { done: true } } });
+      setShowPopularity(false);
+      setShowRelationships(false);
+      setPopularityEnabled(payload.popularityEnabled !== false);
+      setRelationshipsEnabled(payload.relationshipsEnabled !== false);
+      setRepechageOption(payload.repechageOption || (payload.academy?.repechageEnabled === false ? "off" : "on"));
+      if (payload.academy?.judges) setJudgeNames(payload.academy.judges);
       setSummaries(payload.summaries || {});    // tabla de recorrido y galas
       setGstate(payload.gstate || {});          // lleva Sets: ya vienen revividos
       setNamesInput(payload.namesInput || "");  // si quieres mostrar la lista original
@@ -858,7 +894,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
         try {
         const g = payload.gala ?? 1;
           const inferred =
-            (g >= 2 && g <= 11)
+            (g >= 2 && g <= 13)
               ? (payload.summaries?.[g - 1]?.finalNominees || [])
               : [];
           setCarryNominees(
@@ -878,13 +914,13 @@ export default function SimuladorOT({ mode, onModeChange }) {
        if (payload.songsMeta && typeof payload.songsMeta === "object") setSongsMeta(payload.songsMeta);
        if (typeof payload.songsReady === "boolean") setSongsReady(payload.songsReady);
 
-       // ⚔️ Duelistas arrastrados (G2–G11 y salto G11→G12)
+       // ⚔️ Duelistas arrastrados (G2–G13 y salto G13→G14)
        try {
          const g = payload.gala ?? 1;
          const inferred =
-           (g >= 2 && g <= 11)
+           (g >= 2 && g <= 13)
              ? (payload.summaries?.[g - 1]?.finalNominees || [])
-             : (g === 12 ? (payload.summaries?.[11]?.finalNominees || []) : []);
+             : (g === 14 ? (payload.summaries?.[13]?.finalNominees || []) : []);
          setCarryNominees(
            Array.isArray(payload.carryNominees) && payload.carryNominees.length
              ? payload.carryNominees
@@ -897,14 +933,22 @@ export default function SimuladorOT({ mode, onModeChange }) {
     }
 
       useEffect(() => {
+        if (loadedSeason) {
+          applyLoadedState(loadedSeason);
+          onLoadedSeason();
+        }
+        // Loaded saves are applied once, including when their format changes the simulator.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [loadedSeason]);
+
+      useEffect(() => {
       try {
         const hash = window.location.hash || "";
         const m = hash.match(/(?:^#|&)sim=([^&]+)/);
         const code = m ? decodeURIComponent(m[1]) : null;
         if (code) {
           const payload = unpackState(code);
-          applyLoadedState(payload);
-          onModeChange?.(payload.mode || mode);
+          onLoadSeason(payload);
         }
       } catch (e) {
         console.warn("No se pudo autocargar el código de la URL:", e);
@@ -996,11 +1040,13 @@ export default function SimuladorOT({ mode, onModeChange }) {
             });
 
             setSongsMeta({ exact, norm });
+            setSongsMetaReady(true);
             console.log("[SongsMeta] cargado:", Object.keys(exact).length);
           })
           .catch(err => {
             console.warn("No pude cargar songs_meta.json", err);
             setSongsMeta({});
+            setSongsMetaReady(true);
           });
       }, []);
 
@@ -1010,7 +1056,6 @@ export default function SimuladorOT({ mode, onModeChange }) {
   useEffect(()=>{ setTestResults(runSelfTests()); },[]);
 
   const active     = useMemo(()=>contestants.filter(c=>c.status==="active"),[contestants]);
-  const canPickRoster = contestants.length === 0 && stage === "inicio";
   const finalists = useMemo(
   () => contestants.filter(c => c.status === "finalista" || c.status === "ganador"),
   [contestants]
@@ -1026,25 +1071,27 @@ export default function SimuladorOT({ mode, onModeChange }) {
   const pushLog = (entry, galaNum=gala)=> setGalaLogs(logs=>({...logs,[galaNum]:[...(logs[galaNum]||[]), entry]}));
   const nameOf = (id)=> contestants.find(x=>x.id===id)?.name ?? "?";
   const nextStageFor = (num) =>
-    num <= 9   ? (carryNominees.length === 2 ? "dueloPendiente" : "votoPublico")
-  : num === 10 ? (carryNominees.length === 2 ? "dueloPendiente" : "gala10_jueces")  // ✅ vuelve a permitir duelo
-  : num === 11 ? "gala11_publico"
-  : num <= 14 ? "g12_14_publico"
+    num <= 11   ? (carryNominees.length === 2 ? "dueloPendiente" : "votoPublico")
+  : num === 12 ? (carryNominees.length === 2 ? "dueloPendiente" : "gala10_jueces")  // ✅ vuelve a permitir duelo
+  : num === 13 ? "gala11_publico"
+  : num <= 16 ? "g12_14_publico"
               : "g15_final";
+
+    const repechage = useRepechage({gala,gstate,setGstate,contestants,setContestants,summaries,setSummaries,setStage,setCarryNominees,songs,songsMeta,academy,manual,popularityEnabled,pickManually,nameOf,pushLog});
 
       function prepararNuevaGala(num, list = contestants) {
         // 👇 NUEVO: elegir correctamente quiénes “juegan” en cada gala
         const pool = (list || contestants);
         let vivos;
 
-        if (num <= 10) {
-          // Hasta la G10: siguen “activos” (no finalistas aún)
+        if (num <= 12) {
+          // Hasta la G12: siguen “activos” (no finalistas aún)
           vivos = pool.filter(c => c.status === "active");
-        } else if (num === 11) {
-          // G11: 5 finalistas + 2 nominados arrastrados (que siguen “active”)
+        } else if (num === 13) {
+          // G13: 5 finalistas + 2 nominados arrastrados (que siguen “active”)
           vivos = pool.filter(c => c.status === "finalista" || c.status === "active");
         } else {
-          // G12–G15: solo finalistas (y en G15 también valdrá “ganador” si ya lo marcas)
+          // G14–G17: solo finalistas (y en G17 también valdrá “ganador” si ya lo marcas)
           vivos = pool.filter(c => c.status === "finalista" || c.status === "ganador");
         }
 
@@ -1055,10 +1102,10 @@ export default function SimuladorOT({ mode, onModeChange }) {
           currentEvaluadoId: undefined, currentEvaluadoLogIndex: undefined, g12: undefined, g15: undefined
         });
 
-        const activosIds = vivos.map(c => c.id);
-        const nominadosDuelo = (num >= 2 && num <= 10) ? [...carryNominees] : [];
+        const activosIds = [...new Set([...vivos.map(c => c.id), ...(num === 9 ? summaries[8]?.repechage?.selected || [] : [])])];
+        const nominadosDuelo = (num >= 2 && num <= 12) ? [...carryNominees] : [];
         const repartoBase = buildRepartoParaGala(num, activosIds, nominadosDuelo);
-        const reparto = buildRepartoConCanciones({
+        const { reparto, groupSong } = buildRepartoConCanciones({
             galaNum: num,
             reparto: repartoBase,
             summaries,
@@ -1076,7 +1123,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
             duelSaved,                                // pasar a la nueva gala
 
             // aquí se guarda también el reparto (temas de la gala nueva)
-            [num]: { ...(s[num]?.[num] || {}), reparto }
+            [num]: { ...(s[num]?.[num] || {}), reparto, groupSong }
           }
         };
       });
@@ -1093,33 +1140,21 @@ export default function SimuladorOT({ mode, onModeChange }) {
 
 
   function iniciar() {
-    const lines = namesInput
-      .split(/\r?\n/)
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
-
-    if (lines.length !== 18) {
-      alert(`Hay ${lines.length} nombres. Deben ser exactamente 18, uno por línea (sin líneas vacías).`);
+    if (!songsReady || !songsMetaReady || !songs.length) { alert("Espera a que se carguen las canciones antes de empezar."); return; }
+    if (roster.length !== 18) {
+      alert(`Hay ${roster.length} concursantes seleccionados. Deben ser exactamente 18.`);
       return;
     }
-
-    // mapa por nombre para cruzar con pendingRealRoster
-    const dbByName = Object.fromEntries(
-      (pendingRealRoster || []).map(p => [p.name.toLowerCase(), p])
-    );
-
-    // al crear cada concursante:
-    const inits = lines.map(line => {
-      const { name, gender } = parseNameLine(line);
-      const base = { id: uid(), name, gender, status: "active", history: [] };
-      const real = dbByName[name.toLowerCase()];
-      return real ? { ...base, photo: real.photo, stats: real.stats } : base;
-    });
+    const inits = roster.map(p => ({
+      ...p, id: uid(), status: "active", history: [], popularity: 50, stats: { ...p.stats },
+    }));
 
 
     try {
+      setAcademy(a => ({ ...a, repechageEnabled: resolveRepechage(repechageOption), judges: judgeNames.map((n,i) => n.trim() || `Juez ${i+1}`), weeks: {}, pairs: [], relationships: {} }));
+      setShowPopularity(false);
+      setShowRelationships(false);
       setContestants(inits);
-      //setPendingRealRoster(null); // limpia la plantilla para la siguiente vez
       setGala(0);
       setViewGala(0); // 👈 asegura que ves la Gala 0 en el historial
       setStage("gala0");
@@ -1141,23 +1176,23 @@ export default function SimuladorOT({ mode, onModeChange }) {
         if (has("salvad") && has("por el jurado") && has("entra")) return { bg: "#fff", fg: "#111" };
       }
 
-      // G12–G14: 6º/5º/4º Finalista
-      if ((galaNum === 12 || galaNum === 13 || galaNum === 14) &&
+      // G14–G16: 6º/5º/4º Finalista
+      if ((galaNum === 14 || galaNum === 15 || galaNum === 16) &&
           /\b(6|5|4)(º|ª)?\b/.test(v) && has("finalista")) {
         return { bg: "sienna", fg: "#fff" };
       }
 
-      // ——— G10 finales específicos ———
-      if (galaNum === 10 && has("finalista") && has("por los profesores"))
+      // ——— G12 finales específicos ———
+      if (galaNum === 12 && has("finalista") && has("por los profesores"))
         return { bg: "yellowgreen", fg: "#111" };
-      if (galaNum === 10 && has("finalista") && has("por los compañeros"))
+      if (galaNum === 12 && has("finalista") && has("por los compañeros"))
         return { bg: "khaki", fg: "#111" };
 
       // Propuestos/Nominados sin ser finalistas (evita pisar los finalistas)
       if (has("propuest") && has("nominad") && !has("finalista"))
         return { bg: "orange", fg: "#111" };
 
-      // Colores de propuesta con salvado (aplican también si no es G10-finalista)
+      // Colores de propuesta con salvado (aplican también si no es G12-finalista)
       if (has("propuest") && has("por el jurado") && has("profesores")) return { bg: "yellowgreen", fg: "#111" };
       if (has("propuest") && has("por el jurado") && has("compañeros")) return { bg: "khaki", fg: "#111" };
       if (has("propuest") && has("nominad"))                              return { bg: "#fef08a", fg: "#111" };
@@ -1184,7 +1219,10 @@ export default function SimuladorOT({ mode, onModeChange }) {
 
 
 
-  function reiniciar(){ 
+  function reiniciar(){
+    setAcademy(emptyAcademy());
+    setShowPopularity(false);
+      setShowRelationships(false);
     setContestants([]); 
     setGala(1); 
     setViewGala(1); 
@@ -1195,38 +1233,10 @@ export default function SimuladorOT({ mode, onModeChange }) {
     setSummaries({}); 
   }
 
-      if (route === "selector") {
-        return (
-          <OTRosterPicker
-            max={18}
-            onCancel={() => setRoute("home")}
-            onImport={(picked) => {
-              if (!picked?.length) return;
-
-              // (a) Mezclar con lo que ya hayas escrito a mano:
-              const typed = namesInput.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-              const pickedLines = picked.map(
-                p => `${p.name} - ${p.gender === "m" ? "él" : p.gender === "f" ? "ella" : "elle"}`
-              );
-              const combined = [...typed, ...pickedLines].slice(0, 18);
-              setNamesInput(combined.join("\n"));
-
-              // (b) Guardar roster real para inyectar foto+stats al iniciar()
-              setPendingRealRoster([ ...(pendingRealRoster || []), ...picked ]);
-
-              // (c) Volver a la app
-              setRoute("home");
-            }}
-          />
-        );
-      }
-
-
-
     const onDownloadRecorrido = async () => {
-      const node = document.getElementById("recorrido-capture");
+      const node = document.getElementById(showRelationships ? "relaciones-capture" : showPopularity ? "popularidad-capture" : "recorrido-capture");
       if (!node) {
-        alert("No se encontró la tabla del recorrido 😕");
+        alert("No se encontró la tabla activa 😕");
         return;
       }
 
@@ -1268,7 +1278,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
         });
 
         const link = document.createElement("a");
-        link.download = "recorrido.png";
+        link.download = `${showRelationships ? "relaciones" : showPopularity ? "popularidad" : "recorrido"}.png`;
         link.href = dataUrl;
         link.click();
       } catch (err) {
@@ -1282,6 +1292,48 @@ export default function SimuladorOT({ mode, onModeChange }) {
     };
 
 
+    function g0_snapshot() {
+      return { gstate: { ...gstate, g0Reveal: undefined }, contestants, summaries, galaLogs, stage };
+    }
+    function g0_applyResult(pending) {
+      setGstate(pending.gstate);
+      setContestants(pending.contestants);
+      setSummaries(pending.summaries);
+      setGalaLogs(pending.galaLogs);
+      setStage(pending.stage);
+      setViewGala(0);
+    }
+    function g0_revealNext(revealAll = false) {
+      if (stage !== "g0_eval") return;
+      let reveal = gstate.g0Reveal;
+      if (!reveal) {
+        reveal = prepareGalaZeroJury(calculateG0Jury, g0_snapshot());
+        if (!reveal) return;
+        if (revealAll || !reveal.events.length) { g0_applyResult(reveal.pending); return; }
+      } else if (revealAll || (reveal.phase === "result" && reveal.index === reveal.events.length - 1)) {
+        g0_applyResult(reveal.pending);
+        return;
+      } else {
+        reveal = reveal.phase === "present" && summaries[0]?.performances?.[reveal.events[reveal.index].id] ? { ...reveal, phase: "comment" }
+          : reveal.phase === "present" || reveal.phase === "comment" ? { ...reveal, phase: "result" }
+          : { ...reveal, index: reveal.index + 1, phase: "present" };
+      }
+      setGstate(st => ({ ...st, g0Reveal: reveal }));
+      setViewGala(0);
+    }
+    function g0_revealSave(calculate) {
+      if (gstate.g0Reveal?.phase === "result") {
+        g0_applyResult(gstate.g0Reveal.pending);
+        return;
+      }
+      const pending = captureScoreResult(calculate, g0_snapshot(), 0);
+      if (pending.stage === stage) return; // A cancelled manual choice stays on the same screen.
+      setGstate(st => ({ ...st, g0Reveal: { phase: "result", pending } }));
+      setViewGala(0);
+    }
+    function g0_profesSalvan() { g0_revealSave(calculateG0Teachers); }
+    function g0_publicoVota() { g0_revealSave(calculateG0Public); }
+
     function g0_setup(list) {
       // (opcional) si quieres asegurar que hay canciones cargadas
       if (!songsReady) { setStage("cargandoCanciones"); return; }
@@ -1291,7 +1343,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
 
       // 1) Reparto base (solos) y asignación de canciones
       const reparto0base = buildRepartoParaGala(0, list.map(c => c.id), []);
-      const reparto0 = buildRepartoConCanciones({
+      const { reparto: reparto0, groupSong } = buildRepartoConCanciones({
         galaNum: 0,
         reparto: reparto0base,
         summaries,
@@ -1303,7 +1355,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
         ...s,
         0: {
           ...(s[0] || { gala: 0 }),
-          0: { ...(s[0]?.[0] || {}), reparto: reparto0 },
+          0: { ...(s[0]?.[0] || {}), reparto: reparto0, groupSong },
         },
       }));
 
@@ -1322,8 +1374,8 @@ export default function SimuladorOT({ mode, onModeChange }) {
       pushLog("🎬 El jurado decide quién entra y quién queda en duda.", 0);
     }
 
-    function g0_revealNext() {
-      const st = gstate?.g0;
+    function calculateG0Jury({ gstate, contestants, summaries, setGstate, setContestants, setStage, pushLog }) {
+      let st = gstate?.g0;
       if (!st) { pushLog("⚠️ Prepara primero la Gala 0.", 0); return; }
 
       // ====== MODO MANUAL: elegir directamente los 4 "en duda" ======
@@ -1332,8 +1384,8 @@ export default function SimuladorOT({ mode, onModeChange }) {
         const ids   = vivos.map(c => c.id);
 
         // Si ya hay 4 en duda, pasa a profes
-        if (Array.isArray(st.doubt) && st.doubt.length === 4) {
-          pushLog(`ℹ️ Ya hay 4 en duda: ${st.doubt.map(nameOf).join(" · ")}.`, 0);
+        if (new Set(st.doubt || []).size === 4) {
+          pushLog(`ℹ️ Ya hay 4 en duda: ${Array.from(st.doubt).map(nameOf).join(" · ")}.`, 0);
           setStage("g0_profes");
           return;
         }
@@ -1371,6 +1423,9 @@ export default function SimuladorOT({ mode, onModeChange }) {
       }
 
       // ====== MODO AUTOMÁTICO (tu flujo tal cual) ======
+      if (summaries[0]?.performances && !st.performanceNominees) {
+        st = { ...st, performanceNominees: [...st.doubt, ...selectPerformanceNominees(st.order.slice(st.idx), summaries[0].performances, contestants, 4 - new Set(st.doubt).size)] };
+      }
       const { order, idx } = st;
       if (!order || order.length === 0) { pushLog("⚠️ No hay orden de evaluación para la Gala 0.", 0); return; }
       if (idx >= order.length) {
@@ -1401,8 +1456,10 @@ export default function SimuladorOT({ mode, onModeChange }) {
         pDoubt = BASE_G0_DOUBT;
       }
 
+      if (summaries[0]?.performances?.[id]) pDoubt = Math.max(0.05, Math.min(0.9, BASE_G0_DOUBT + performanceNominationModifier(summaries[0].performances[id])));
       let decision;
-      if (needDoubt <= 0)               decision = "entra";
+      if (st.performanceNominees) decision = st.performanceNominees.includes(id) ? "duda" : "entra";
+      else if (needDoubt <= 0)               decision = "entra";
       else if (remaining === needDoubt) decision = "duda";
       else                              decision = (Math.random() < pDoubt) ? "duda" : "entra";
 
@@ -1422,7 +1479,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
     }
 
 
-    function g0_profesSalvan() {
+    function calculateG0Teachers({ gstate, contestants, summaries, setGstate, setContestants, setStage, pushLog }) {
       const st = gstate?.g0;
       if (!st) return;
 
@@ -1485,7 +1542,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
       setStage(candidatos.length === 4 ? "g0_publico" : "g0_cerrar");
     }
 
-    function g0_publicoVota() {
+    function calculateG0Public({ gstate, contestants, summaries, setGstate, setContestants, setStage, pushLog }) {
       const st = gstate?.g0; 
       if (!st) return;
       const candidatos = Array.from(st.doubt || []);
@@ -1524,7 +1581,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
       }
 
       // ====== AUTOMÁTICO (tu versión con % aleatorios) ======
-      const pcts = randomPercentages(3);
+      const pcts = audiencePercentages(candidatos, contestants, Math.random, 4, popularityEnabled);
       const tabla = candidatos.map((id,i)=>({ id, name: nameOf(id), pct: pcts[i] }))
                               .sort((a,b)=>b.pct-a.pct);
       const winner = tabla[0].id;
@@ -1609,7 +1666,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
 
         // ✅ Generar y GUARDAR el reparto de G1 (duetos)
          const reparto1base = buildRepartoParaGala(1, activosIds, []);
-         const reparto1 = buildRepartoConCanciones({
+         const { reparto: reparto1, groupSong } = buildRepartoConCanciones({
            galaNum: 1,
            reparto: reparto1base,
            summaries,
@@ -1617,7 +1674,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
          });
         setSummaries(s => ({
           ...s,
-          1: { ...(s[1] || { gala: 1 }), 1: { ...(s[1]?.[1] || {}), reparto: reparto1 } }
+          1: { ...(s[1] || { gala: 1 }), 1: { ...(s[1]?.[1] || {}), reparto: reparto1, groupSong } }
         }));
 
         // ✅ Sembrar el estado base de G1 (para que aparezca el botón de favoritos)
@@ -1631,27 +1688,84 @@ export default function SimuladorOT({ mode, onModeChange }) {
         // ✅ Cambiar de gala, pestaña y etapa visible
         setGala(1);
         setViewGala(1);
-        setStage("votoPublico"); // ← aquí aparece “🧪 Mostrar 3 más votados”
+        setStage("votoPublico"); // ← aquí aparece “🎤 Presentar favoritos”
 
         pushLog("🏁 Gala 0 cerrada. Entran 16 concursantes. Comienza la Gala 1.");
     }
 
 
-   const goNext = ()=>{ const next=gala+1; setGala(next); prepararNuevaGala(next); };
+   const goNext = ()=>{ const next=nextGala(gala,repechageEnabled); setGala(next); prepararNuevaGala(next); };
 
+
+    function startCeremony(kind, ids, source, voters = []) {
+      setGstate(st => ({ ...st, ceremony: { kind, ids: [...ids], source, voters, votes: [], phase: "intro" } }));
+      setViewGala(gala);
+      setStage("ceremony");
+    }
+    function finishCeremony(nextStage) {
+      if (!gstate.ceremony) { setStage(nextStage); return; }
+      setGstate(st => ({ ...st, ceremony: { ...st.ceremony, phase: "result", nextStage } }));
+      setStage("ceremony");
+    }
+    function continueCeremony() {
+      const next = gstate.ceremony.nextStage;
+      setGstate(st => ({ ...st, ceremony: undefined }));
+      setStage(next);
+    }
+    function advanceCeremony() {
+      const c = gstate.ceremony;
+      if (!c || c.phase === "result") return;
+      if (c.kind === "duel" && c.phase !== "percentage") {
+        const phase = c.phase === "intro" ? "phrase" : "percentage";
+        if (phase === "phrase") pushLog("🗣️ La audiencia ha decidido que debe proseguir su formación en la academia con un…");
+        else pushLog(`📊 ${c.pct.toFixed(2)}%`);
+        setGstate(st => ({ ...st, ceremony: { ...c, phase } }));
+        return;
+      }
+      if (c.kind === "peers" && c.votes.length < c.voters.length) {
+        if (c.phase === "board") {
+          setGstate(st => ({ ...st, ceremony: { ...c, phase: "announceVote" } }));
+          return;
+        }
+        const voterId = c.voters[c.votes.length];
+        const votedId = manual ? pickManually(c.ids, false, nameOf, `${nameOf(voterId)} salva a…`) : choosePeerSave({ voterId, candidates: c.ids, relations: academy.relationships, pairs: academy.pairs, reparto: summaries[gala]?.[gala]?.reparto, enabled: relationshipsEnabled }, Math.random);
+        if (!votedId) return;
+        setGstate(st => ({ ...st, ceremony: { ...c, phase: "board", votes: [...c.votes, { voterId, votedId }] } }));
+        return;
+      }
+      const resolve = { duel: dueloRevelar, teachers: profesoresSalvanUno, peers: companerosVotan, specialTeachers: gala10Profes, specialPeers: gala10Compas, finalDuel: g11_revelar };
+      resolve[c.source]?.();
+    }
+
+    function revealAllPeerVotes() {
+      const c = gstate.ceremony;
+      if (!c || c.kind !== "peers") return;
+      if (c.phase === "result") { continueCeremony(); return; }
+      const votes = [...c.votes];
+      for (const voterId of c.voters.slice(votes.length)) {
+        const votedId = manual ? pickManually(c.ids, false, nameOf, `${nameOf(voterId)} salva a…`) : choosePeerSave({ voterId, candidates: c.ids, relations: academy.relationships, pairs: academy.pairs, reparto: summaries[gala]?.[gala]?.reparto, enabled: relationshipsEnabled }, Math.random);
+        if (!votedId) {
+          setGstate(st => ({ ...st, ceremony: { ...c, votes, phase: "announceVote" } }));
+          return;
+        }
+        votes.push({ voterId, votedId });
+      }
+      const completed = { ...gstate, ceremony: { ...c, votes } };
+      (c.source === "specialPeers" ? gala10Compas : companerosVotan)(completed, true);
+      setViewGala(gala);
+    }
 
     function iniciarDueloCiego() {
+      if (gala === 9 && summaries[8]?.repechage?.selected?.length) { repechage.startReturn(); return; }
       if (carryNominees.length !== 2) { setStage(nextStageFor(gala)); return; }
       const [a, b] = carryNominees;
 
-      const { high, low } = randomDuelPercents();
-      const giveToA = Math.random() < 0.5;
-      const pctA = giveToA ? high : low;
-      const pctB = giveToA ? low  : high;
+      const [pctA, pctB] = audiencePercentages([a, b], contestants, Math.random, 4, popularityEnabled);
 
       // Guardamos el paquete del duelo en gstate
       setGstate(st => ({
         ...st,
+        ceremony: { kind: "duel", source: "duel", ids: [a, b], pct: Math.max(pctA, pctB), phase: "intro" },
         duelStep: {
           a, b, pctA, pctB,
           winner: pctA > pctB ? a : b,
@@ -1660,8 +1774,9 @@ export default function SimuladorOT({ mode, onModeChange }) {
       }));
 
       // Paso 1: porcentajes ciegos
-      pushLog(`📊 Porcentajes ciegos (duelo): ${fmtPct(pctA)} · ${fmtPct(pctB)}.`);
-      setStage("duelo_ciegos");
+      pushLog("Llega el momento de la verdad");
+      setStage("ceremony");
+      setViewGala(gala);
     }
 
     function dueloMostrarFrase() {
@@ -1677,7 +1792,8 @@ export default function SimuladorOT({ mode, onModeChange }) {
     function dueloRevelar() {
       const pkg = gstate?.duelStep;
       if (!pkg) { pushLog("⚠️ No hay duelo preparado."); return; }
-      const { a, b, pctA, pctB, winner, loser } = pkg;
+      const { a, b, winner, loser } = pkg;
+      let { pctA, pctB } = pkg;
 
       // ======= 💡 MODO MANUAL: decides quién es expulsado/a =======
       if (manual) {
@@ -1686,6 +1802,9 @@ export default function SimuladorOT({ mode, onModeChange }) {
 
         const win = expulsado === a ? b : a;
         const lose = expulsado;
+        const high = Math.max(pctA, pctB);
+        const low = Math.min(pctA, pctB);
+        [pctA, pctB] = win === a ? [high, low] : [low, high];
 
         // Paso 3: revelación y efectos (mismo post-proceso que automático)
         setContestants(prev => prev.map(c => {
@@ -1770,12 +1889,12 @@ export default function SimuladorOT({ mode, onModeChange }) {
         setCarryNominees([]);
         setGstate(st => ({ ...st, duelStep: undefined }));
 
-        if (gala === 10) {
-          setStage("gala10_jueces");   // Telecinco G10
-        } else if (gala <= 9) {
-          setStage("votoPublico");     // G1–G9
+        if (gala === 12) {
+          finishCeremony("gala10_jueces");   // Telecinco G12
+        } else if (gala <= 11) {
+          finishCeremony("votoPublico");     // G1–G9
         } else {
-          setStage(nextStageFor(gala)); // resto igual
+          finishCeremony(nextStageFor(gala)); // resto igual
         }
         return; // ⛔ no sigas a la rama automática
       }
@@ -1854,12 +1973,12 @@ export default function SimuladorOT({ mode, onModeChange }) {
       setCarryNominees([]);
       setGstate(st => ({ ...st, duelStep: undefined }));
 
-      if (gala === 10) {
-        setStage("gala10_jueces");
-      } else if (gala <= 9) {
-        setStage("votoPublico");
+      if (gala === 12) {
+        finishCeremony("gala10_jueces");
+      } else if (gala <= 11) {
+        finishCeremony("votoPublico");
       } else {
-        setStage(nextStageFor(gala));
+        finishCeremony(nextStageFor(gala));
       }
     }
 
@@ -1870,10 +1989,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
       if (carryNominees.length !== 2) { setStage(nextStageFor(gala)); return; }
       const [a, b] = carryNominees;
 
-      const { high, low } = randomDuelPercents();
-      const giveToA = Math.random() < 0.5;
-      const pctA = giveToA ? high : low;
-      const pctB = giveToA ? low  : high;
+      const [pctA, pctB] = audiencePercentages([a, b], contestants, Math.random, 4, popularityEnabled);
 
       const winner = pctA > pctB ? a : b;
       const loser  = winner === a ? b : a;
@@ -1956,144 +2072,94 @@ export default function SimuladorOT({ mode, onModeChange }) {
 
 
 
-    function iniciarVotoPublico(){
+    function iniciarVotoPublico() {
       if (!gstate || gstate.top3Shown) return;
-
       const vivos = contestants.filter(c => c.status === "active");
-      if (!vivos.length) return;
-
-      // 🚫 Mantiene el veto al salvado del duelo de ESTA gala (ya estaba implementado)
-      const winnerThisGala = summaries[gala]?.duel?.winner || null;
-      const ban = new Set([
-        ...(gstate?.top3Ban ? Array.from(gstate.top3Ban) : []),
-        ...(winnerThisGala ? [winnerThisGala] : [])
-      ]);
-
-      const rands = randomPercentages(vivos.length);
-      const ranked = vivos
-        .map((c, i) => ({ id: c.id, pct: rands[i] }))
-        .sort((a, b) => b.pct - a.pct);
-
-      const top3Rows = ranked.filter(r => !ban.has(r.id)).slice(0, 3);
-      const top3Ids  = top3Rows.map(r => r.id);
-      const top3Pct  = top3Rows.map(r => r.pct);
-
-      const favoritoId = top3Ids[0] ?? null;
-
-      // 👇 NO logueamos porcentajes aquí para no spoilear
-      // Preparamos orden aleatorio para la primera revelación
-      const randomTop3Order = shuffle(top3Ids);
-
-      setGstate(prev => ({
-        ...prev,
-        publicRank: ranked,
-        top3: top3Ids,
-        top3Pct,
-        favoritoId,               // solo almacenado, aún no "revelado"
-        top3Shown: true,
-        top3RandomOrder: randomTop3Order,
-        top3NamesRevealed: false, // 🆕 flag de fase 1
-        top3Ban: new Set([...(prev.top3Ban || []), ...(winnerThisGala ? [winnerThisGala] : [])])
-      }));
-
-      setSummaries(s => ({
-        ...s,
-        [gala]: {
-          ...(s[gala] || { gala }),
-          duelSaved: s[gala]?.duelSaved,
-          [gala]: { ...(s[gala]?.[gala] || {}) }
-        }
-      }));
-
-      // Log neutro para guiar la UI
-      pushLog(`🧪 Top 3 preparado. Pulsa “Revelar 3 favoritos” para mostrarlos sin porcentajes.`);
-    }
-
-    function revelarTop3YFavorito(){
-      if (!gstate || gstate.top3.length === 0) return;
-      if (gala >= 10) {
-        pushLog(`ℹ️ Desde la Gala 10 no hay favorito. Continúa con la evaluación del jurado.`);
-        setStage("juradoEvaluando");
-        return;
-      }
-
-      // ——— FASE 1: solo nombres, sin % ———
-      if (!gstate.top3NamesRevealed) {
-
-        // —— MANUAL: permitir elegir el Top-3 aquí (sustituye a la aleatoria) ——
-        if (manual) {
-          const candidatos = contestants.filter(c => c.status === "active").map(c => c.id);
-          const top3Elegidos = pickManually(candidatos, true, nameOf, "Elige a los 3 más votados")?.slice(0,3);
-          if (!top3Elegidos || top3Elegidos.length !== 3) { alert("Debes elegir 3."); return; }
-
-          setGstate(st => ({
-            ...st,
-            top3: top3Elegidos,
-            top3NamesRevealed: true,
-            top3RandomOrder: null
-          }));
-          setSummaries(s => ({
-            ...s,
-            [gala]: { ...(s[gala] || { gala }), top3Ids: top3Elegidos, [gala]: { ...(s[gala]?.[gala] || {}) } }
-          }));
-          pushLog(`🎖️ Top-3 (manual, sin %): ${top3Elegidos.map(nameOf).join(" · ")}`);
-          return; // terminamos Fase 1
-        }
-
-        // — Automático (como ya lo tenías) —
-        const orden = (gstate.top3RandomOrder?.length ? gstate.top3RandomOrder : shuffle(gstate.top3));
-        const lista = orden.map(nameOf).join(" · ");
-        pushLog(`🎖️ Los 3 favoritos (orden aleatorio): ${lista}`);
-        setGstate({ ...gstate, top3NamesRevealed: true });
-        setSummaries(s => ({
-          ...s,
-          [gala]: { ...(s[gala] || { gala }), top3Ids: gstate.top3, [gala]: { ...(s[gala]?.[gala] || {}) } }
-        }));
-        return;
-      }
-
-      // ——— FASE 2: revelar favorito ———
-      // —— MANUAL: elegir favorito entre los 3 ya fijados ——
+      const ban = new Set([...(summaries[gala - 1]?.finalNominees || []), ...(summaries[gala - 1]?.repechage?.selected || [])]);
+      const ranked = favoriteRanking(vivos, popularityEnabled, Math.random);
+      let top3 = ranked.filter(r => !ban.has(r.id)).slice(0, 3).map(r => r.id);
       if (manual) {
-        const top3Actual = gstate.top3 || [];
-        if (top3Actual.length !== 3) { alert("No hay Top-3 definido."); return; }
-        const favoritoId = pickManually(top3Actual, false, nameOf, "Elige al Favorito/a");
-        if (!favoritoId) return;
-
-        const salvados = new Set(gstate.salvados); salvados.add(favoritoId);
-        setGstate({ ...gstate, favoritoId, salvados, top3Pct: [] });
-        setSummaries(s => ({
-          ...s,
-          [gala]: { ...(s[gala] || { gala }), top3Ids: top3Actual, favoritoId }
-        }));
-        pushLog(`🌟 Favorito/a (manual): <strong>${nameOf(favoritoId)}</strong>. Top-3: ${top3Actual.map(nameOf).join(" · ")}`);
-        setStage("juradoEvaluando");
-        return;
+        const selected = pickManually(vivos.filter(c => !ban.has(c.id)).map(c => c.id), true, nameOf, "Elige a los 3 más votados");
+        if (!selected) return;
+        if (selected.length !== 3 || new Set(selected).size !== 3) { alert("Debes elegir 3 concursantes distintos."); return; }
+        top3 = selected;
       }
-
-      // — Automático (como ya lo tenías) —
-      const top3 = gstate.top3
-        .map(id => gstate.publicRank.find(r => r.id === id))
-        .filter(Boolean)
-        .sort((a, b) => b.pct - a.pct);
-
-      const favorito = top3[0];
-      const top3Pct  = top3.map(t => t.pct);
-
-      const salvados = new Set(gstate.salvados);
-      salvados.add(favorito.id);
-
-      pushLog(`🌟 <strong>Favorito/a: ${nameOf(favorito.id)}</strong>. ` +
-              `Porcentajes Top3: ${top3.map(t => `${nameOf(t.id)} ${fmtPct(t.pct)}`).join(" · ")}`);
-
-      setGstate({ ...gstate, favoritoId: favorito.id, salvados, top3Pct, finalTwoPlan: undefined });
-      setSummaries(s => ({ ...s, [gala]: { ...(s[gala] || { gala }), top3Pct, favoritoId: favorito.id } }));
-      setStage("juradoEvaluando");
+      if (top3.length !== 3) return;
+      // Fisher–Yates: revelation order is independent of the ranking.
+      const order = [...top3];
+      for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+      setGstate(prev => ({ ...prev, publicRank: ranked, top3,
+        top3Pct: [], favoritoId: undefined, top3Shown: true,
+        top3RandomOrder: order, top3RevealCount: 0, top3NamesRevealed: false,
+        favoriteRevealed: false, top3Ban: ban,
+      }));
+      setViewGala(gala);
+      pushLog("🎤 La Audiencia ha decidido que los 3 concursantes más votados esta semana para ser el Favorito son…");
     }
 
+    function revelarTop3YFavorito() {
+      if (!gstate?.top3?.length || gstate.favoriteRevealed) return;
+      const count = gstate.top3RevealCount ?? (gstate.top3NamesRevealed ? 3 : 0);
+      const order = gstate.top3RandomOrder || gstate.top3;
+      setViewGala(gala);
+      if (count < 3) {
+        const nextCount = count + 1;
+        pushLog(`⭐ Entre los 3 más votados: <strong>${nameOf(order[count])}</strong>.`);
+        setGstate(st => ({ ...st, top3RandomOrder: order, top3RevealCount: nextCount, top3NamesRevealed: nextCount === 3 }));
+        if (nextCount === 3) {
+          setSummaries(s => ({ ...s, [gala]: { ...(s[gala] || { gala }), top3Ids: gstate.top3 } }));
+          pushLog(`🎖️ Los 3 favoritos (orden aleatorio): ${order.map(nameOf).join(" · ")}`);
+        }
+        return;
+      }
+      const top3Rank = gstate.top3.map(id => gstate.publicRank.find(r => r.id === id)).filter(Boolean).sort((a, b) => b.pct - a.pct);
+      const favoritoId = manual
+        ? pickManually(gstate.top3, false, nameOf, "Elige al Favorito/a")
+        : top3Rank[0]?.id;
+      if (!favoritoId) return;
+      const salvados = new Set(gstate.salvados);
+      salvados.add(favoritoId);
+      const top3Pct = manual ? [] : top3Rank.map(r => r.pct);
+      setGstate(st => ({ ...st, favoritoId, salvados, top3Pct, favoriteRevealed: true, finalTwoPlan: undefined }));
+      setSummaries(s => ({ ...s, [gala]: { ...(s[gala] || { gala }), top3Ids: gstate.top3, top3Pct, favoritoId } }));
+      pushLog(`🌟 <strong>Favorito/a: ${nameOf(favoritoId)}</strong>. ` + (manual
+        ? `Top-3: ${order.map(nameOf).join(" · ")}`
+        : `Porcentajes Top3: ${top3Rank.map(t => `${nameOf(t.id)} ${fmtPct(t.pct)}`).join(" · ")}`));
+      // Keep the winner visible until the user explicitly continues.
+    }
 
-    function evaluarSiguientePorJurado(){
+    function evaluarSiguientePorJurado(revealAll = false) {
+      if (stage !== "juradoEvaluando") return;
+      if (gala === 8 && repechageEnabled) { repechage.start(); return; }
+      if (!revealAll && gstate.currentEvaluadoId && !gstate.juryCommentShown && summaries[gala]?.performances?.[gstate.currentEvaluadoId]) {
+        setGstate(st => ({ ...st, juryCommentShown: true }));
+        return;
+      }
+      const next = runJuryReveal(evaluarPasoJurado, { gstate, galaLogs, summaries, stage }, gala, revealAll);
+      setGstate(next.gstate);
+      setGalaLogs(next.galaLogs);
+      setSummaries(next.summaries);
+      setStage(next.stage);
+      setViewGala(gala);
+    }
+
+    function evaluarPasoJurado({ gstate, galaLogs, summaries, setGstate, setGalaLogs, setSummaries, setStage, pushLog }){
       if (!gstate) return;
+      if (!manual && summaries[gala]?.performances && !gstate.performanceNominees) {
+        const eligible = contestants.filter(c => c.status === "active" && c.id !== gstate.favoritoId && !gstate.evalResults.some(r => r.id === c.id)).map(c => c.id);
+        gstate = { ...gstate, performanceNominees: [...gstate.nominados, ...selectPerformanceNominees(eligible.filter(id => !gstate.nominados.includes(id)), summaries[gala].performances, contestants, 4 - gstate.nominados.length)] };
+      }
+
+
+      if (!manual && gstate.performanceNominees && !gstate.juryOrderReady) {
+        const remainingIds = contestants.filter(c => c.status === "active" && c.id !== gstate.favoritoId && !gstate.evalResults.some(r => r.id === c.id)).map(c => c.id);
+        const current = gstate.currentEvaluadoId;
+        const order = mixedJuryOrder(remainingIds.filter(id => id !== current), gstate.performanceNominees, Math.random);
+        gstate = { ...gstate, evaluacionOrden: current ? [current, ...order] : order, juryOrderReady: true };
+      }
 
       const sufOfId = (id) => {
       const g = contestants.find(x => x.id === id)?.gender || "e";
@@ -2104,7 +2170,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
 
 
       // 1) Construir orden al entrar al jurado
-      if (!gstate.evaluacionOrden || gstate.evaluacionOrden.length === 0) {
+      if ((!gstate.evaluacionOrden || gstate.evaluacionOrden.length === 0) && !gstate.evalResults?.length) {
         const vivosIds   = contestants.filter(c => c.status === "active").map(c => c.id);
         const favId      = gstate.favoritoId || null;
         const vivosSinFav = favId ? vivosIds.filter(id => id !== favId) : vivosIds;
@@ -2164,19 +2230,34 @@ export default function SimuladorOT({ mode, onModeChange }) {
         }
 
         const actualId = pend[0];
-        const idx = (galaLogs[gala]?.length || 0);
+        const idx = (galaLogs[gala]?.length || 0) + (summaries[gala]?.performances?.[actualId] ? 1 : 0);
         setGalaLogs(prev => {
           const arr = [ ...(prev[gala] || []) ];
+          const feedback = summaries[gala]?.performances?.[actualId];
+          const safe = text => String(text).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+          if (feedback) arr.push(`⚖️ ${safe(feedback.judge)} a <strong>${safe(nameOf(actualId))}</strong>: ${safe(feedback.critique)}`);
           arr.push(`⚖️ Jurado evalúa a <strong>${nameOf(actualId)}</strong> → …`);
           return { ...prev, [gala]: arr };
         });
-        setGstate({ ...gstate, currentEvaluadoId: actualId, currentEvaluadoLogIndex: idx });
+        setGstate({ ...gstate, currentEvaluadoId: actualId, currentEvaluadoLogIndex: idx, juryCommentShown: false });
         return;
       }
 
       // 3) Decidir acción sobre el evaluado actual
       const id = gstate.currentEvaluadoId;
       const logIdx = gstate.currentEvaluadoLogIndex ?? (galaLogs[gala]?.length || 1) - 1;
+
+      if (!manual && gstate.performanceNominees) {
+        const nominated = gstate.performanceNominees.includes(id);
+        const salvados = new Set(gstate.salvados);
+        if (!nominated) salvados.add(id);
+        writeAt(logIdx, `⚖️ Jurado evalúa a <strong>${nameOf(id)}</strong> → ${nominated ? `<strong>${NOM(id)}</strong>` : "cruza la pasarela"}.`);
+        setGstate({ ...gstate, currentEvaluadoId: undefined, currentEvaluadoLogIndex: undefined,
+          nominados: nominated ? [...gstate.nominados, id] : gstate.nominados, salvados,
+          evalResults: [...gstate.evalResults, { id, result: nominated ? "nominado" : "salvado" }],
+          evaluacionOrden: gstate.evaluacionOrden.filter(x => x !== id) });
+        return;
+      }
 
       // reconstruir pendientes (id primero)
       const yaEvaluados = new Set(gstate.evalResults.map(r => r.id));
@@ -2211,9 +2292,9 @@ export default function SimuladorOT({ mode, onModeChange }) {
       // MODO MANUAL: decidir “salvado” o “nominado” para el evaluado actual
       if (manual) {
         // (opcional) evitar que sea imposible llegar a 4 nominados
-        const canSave = (remaining - 1) >= (4 - gstate.nominados.length);
+
         const choice = pickManually(
-          canSave ? ["salvado", "nominado"] : ["nominado"], // fuerza nominado si no alcanzamos 4
+          manualJuryOptions(remaining, needed), // reserva un salvado y un nominado para el final
           false,
           x => x
         );
@@ -2351,7 +2432,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
       } else {
         // En Galas 1–8 evita repetir con la anterior
         if (gala <= 8 && last === "nominado") plan = ["salvado", "nominado"];
-        else plan = Math.random() < 0.5 ? ["nominado","salvado"] : ["salvado","nominado"];
+        else plan = Math.random() < Math.max(0.1, Math.min(0.9, 0.5 + performanceNominationModifier(summaries[gala]?.performances?.[pend[0]]) - performanceNominationModifier(summaries[gala]?.performances?.[pend[1]]))) ? ["nominado","salvado"] : ["salvado","nominado"];
       }
         setGstate({ ...gstate, finalTwoPlan: plan });
       }
@@ -2410,7 +2491,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
                 : null;
 
             const stats = contestants.find(c => c.id === id)?.stats;
-            const perfMod = performanceModifier(stats, req);
+            const perfMod = summaries[gala]?.performances?.[id] ? performanceNominationModifier(summaries[gala].performances[id]) : performanceModifier(stats, req);
             prob = clamp(prob + perfMod, 0.02, 0.90);
 
             // 🔎 DEBUG: imprime cálculo de probabilidades para este concursante
@@ -2430,7 +2511,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
             if (DEBUG_PROBS) console.warn("DEBUG perfMod error:", e);
           }
 
-          decision = (prob >= 0.5) ? "nominado" : "salvado";
+          decision = (Math.random() < prob) ? "nominado" : "salvado";
         }
       }
 
@@ -2561,14 +2642,14 @@ export default function SimuladorOT({ mode, onModeChange }) {
           return rellenarValoracionesReparto(gala, Sact, contestants);
         });
 
-        setStage("companerosVotan");
+        finishCeremony("companerosVotan");
         return; // <- NO sigas por la rama automática
       }
       // ===== FIN MODO MANUAL =====
 
       // -------- Rama automática (tu código tal cual) --------
-      const countUntil = (gala === 10) ? 9 : gala;
-      const curList    = (gala === 10) ? undefined : cand;
+      const countUntil = (gala === 12) ? 11 : gala;
+      const curList    = (gala === 12) ? undefined : cand;
 
       const salvado = pickProfSave(
         cand,
@@ -2584,8 +2665,8 @@ export default function SimuladorOT({ mode, onModeChange }) {
         nombre: nameOf(id),
         nominaciones: countNomsThrough(id, summaries, countUntil, curList)
       }));
-      const etiqueta = (gala === 10)
-        ? `[G10 DEBUG] Profesores (criterio: menos nominaciones hasta G9)`
+      const etiqueta = (gala === 12)
+        ? `[G12 DEBUG] Profesores (criterio: menos nominaciones hasta G9)`
         : `[G${gala} DEBUG] Profesores deciden entre:`;
       console.group(etiqueta);
       console.table(debugData);
@@ -2615,7 +2696,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
         return rellenarValoracionesReparto(gala, Sact, contestants);
       });
 
-      setStage("companerosVotan");
+      finishCeremony("companerosVotan");
     }
 
 
@@ -2623,13 +2704,13 @@ export default function SimuladorOT({ mode, onModeChange }) {
 
 
   
-    function companerosVotan(){
+    function companerosVotan(votingState = gstate, skipAnimation = false){
       // 🔐 Defensas tempranas
-      if (!gstate) { pushLog("⚠️ Estado no inicializado."); return; }
+      if (!votingState) { pushLog("⚠️ Estado no inicializado."); return; }
 
       // Asegura colecciones válidas
-      const salvadosSet = gstate.salvados instanceof Set ? gstate.salvados : new Set();
-      const candidatos = Array.isArray(gstate.nominados) ? gstate.nominados.slice() : [];
+      const salvadosSet = votingState.salvados instanceof Set ? votingState.salvados : new Set();
+      const candidatos = Array.isArray(votingState.nominados) ? votingState.nominados.slice() : [];
 
       // Necesitamos exactamente 3 nominados para esta fase
       if (candidatos.length !== 3) {
@@ -2638,77 +2719,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
       }
 
       // ======= 💡 MODO MANUAL =======
-      if (manual) {
-        const salvado = pickManually(candidatos, false, nameOf, "Los compañeros salvan a");
-        if (!salvado) return;
 
-        pushLog(`🧑‍🤝‍🧑 Compañeros salvan (manual) a <strong>${nameOf(salvado)}</strong>.`);
-
-        const nominadosRestantes = candidatos.filter(id => id !== salvado);
-        const nuevosSalvados = new Set(salvadosSet); nuevosSalvados.add(salvado);
-
-        setGstate({
-          ...gstate,
-          votosCompaneros: [], // no generamos votos en manual
-          salvadoCompanerosId: salvado,
-          nominados: nominadosRestantes,
-          salvados: nuevosSalvados
-        });
-
-        // Guardado y tabla de reparto como en automático
-        setSummaries(s => ({
-          ...s,
-          [gala]: { ...(s[gala] || { gala }), salvadoCompanerosId: salvado, finalNominees: nominadosRestantes }
-        }));
-
-        pushLog(`🟥 Nominados para la próxima gala: <strong>${nameOf(nominadosRestantes[0])}</strong> vs <strong>${nameOf(nominadosRestantes[1])}</strong>.`);
-        setCarryNominees(nominadosRestantes);
-
-        setSummaries(s => {
-          const seguro = {
-            ...s,
-            [gala]: {
-              ...(s[gala] || { gala }),
-              // ✅ Mantenemos la lista original de propuestos del jurado
-              juradoNominados: s[gala]?.juradoNominados || [],
-
-              // ✅ Quien salvó el jurado o profes
-              profesorSalvoId: gstate.profesorSalvoId ?? s[gala]?.profesorSalvoId,
-
-              // ✅ Ganador de los compañeros
-              salvadoCompanerosId: salvado,
-
-              // ✅ Nominados finales que van a duelo
-              finalNominees: nominadosRestantes,
-
-              // ✅ Info del público (favorito y %)
-              favoritoId: gstate.favoritoId ?? s[gala]?.favoritoId,
-              top3Pct: gstate.top3Pct ?? s[gala]?.top3Pct,
-              top3Ids: s[gala]?.top3Ids || [],   // preserva el Top-3 de esa gala
-
-              // ✅ Si alguien venía salvado del público, no perderlo
-              duelSaved: s[gala]?.duelSaved,
-
-              [gala]: s[gala]?.[gala] || {}
-            }
-          };
-          return rellenarValoracionesReparto(gala, seguro, contestants);
-        });
-
-        // 🧹 Consumir duelSaved para que no se arrastre
-        setSummaries(s => ({ ...s, [gala]: { ...(s[gala] || { gala }), duelSaved: {} } }));
-
-        // Cierra gala y listo
-        setStage("galaCerrada");
-
-        // === AVANZAR A LA SIGUIENTE GALA ===
-        const goNext = () => {
-          const next = gala + 1;
-          setGala(next);
-          prepararNuevaGala(next, contestants);
-        };
-        return; // ← no seguir a la rama automática
-      }
       // ===== FIN MODO MANUAL =====
 
       // ======= 💻 MODO AUTOMÁTICO (tu código) =======
@@ -2721,13 +2732,8 @@ export default function SimuladorOT({ mode, onModeChange }) {
       }
 
       // Emitir votos
-      const votos = [];
-      electores.forEach(v => {
-        const elegido = pickRandom(candidatos, 1)[0];
-        // Si por lo que sea no hay elegido, salimos con seguridad
-        if (!elegido) return;
-        votos.push({ voterId: v, votedId: elegido });
-      });
+      const votos = votingState.ceremony?.votes || [];
+      if (votos.length !== electores.length) return;
 
       // Recuento robusto
       const recuento = Object.fromEntries(candidatos.map(c => [c, 0]));
@@ -2744,9 +2750,10 @@ export default function SimuladorOT({ mode, onModeChange }) {
         .filter(([, n]) => n === max)
         .map(([id]) => id);
 
+      const tiedInitially = [...empatados];
       let desempateMsg = null;
       if (empatados.length > 1) {
-        const favId = gstate.favoritoId ?? null;
+        const favId = votingState.favoritoId ?? null;
         if (favId) {
           const votoFav = votoDe[favId];
           if (votoFav && empatados.includes(votoFav)) {
@@ -2763,9 +2770,14 @@ export default function SimuladorOT({ mode, onModeChange }) {
         return;
       }
 
+      if (tiedInitially.length > 1 && !desempateMsg) {
+        desempateMsg = `🎲 Empate entre ${tiedInitially.map(nameOf).join(", ")}. Al no resolverlo el voto del favorito, el sorteo salva a ${nameOf(ganador)}.`;
+      }
+      const peerTie = tiedInitially.length > 1 ? { ids: tiedInitially, message: desempateMsg, counts: recuento } : null;
+
       // Logs bonitos
       const votosList = votos.map(v => `<li>${nameOf(v.voterId)} → ${nameOf(v.votedId)}</li>`).join("");
-      pushLog(`🧑‍🤝‍🧑 Votación de compañeros:<ul style="margin:4px 0 0 16px;">${votosList}</ul>${gstate.favoritoId ? "<div class=\"text-xs\">* El voto del favorito vale doble en caso de empate</div>" : ""}`);
+      pushLog(`🧑‍🤝‍🧑 Votación de compañeros:<ul style="margin:4px 0 0 16px;">${votosList}</ul>${votingState.favoritoId ? "<div class=\"text-xs\">* El voto del favorito vale doble en caso de empate</div>" : ""}`);
 
       // 📊 Mostrar recuento
       const contadorHTML = candidatos.map(id => `<strong>${nameOf(id)}</strong> ${recuento[id] ?? 0}`).join(" · ");
@@ -2781,7 +2793,8 @@ export default function SimuladorOT({ mode, onModeChange }) {
       const nuevosSalvados = new Set(salvadosSet); nuevosSalvados.add(ganador);
 
       setGstate({
-        ...gstate,
+        ...votingState,
+        peerTie,
         votosCompaneros: votos,
         salvadoCompanerosId: ganador,
         nominados: nominadosRestantes,
@@ -2791,7 +2804,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
       // Guardado mínimo
       setSummaries(s => ({
         ...s,
-        [gala]: { ...(s[gala] || { gala }), salvadoCompanerosId: ganador, finalNominees: nominadosRestantes }
+        [gala]: { ...(s[gala] || { gala }), salvadoCompanerosId: ganador, votosCompaneros: votos, finalNominees: nominadosRestantes }
       }));
 
       pushLog(`🟥 Nominados para la próxima gala: <strong>${nameOf(nominadosRestantes[0])}</strong> vs <strong>${nameOf(nominadosRestantes[1])}</strong>.`);
@@ -2804,11 +2817,11 @@ export default function SimuladorOT({ mode, onModeChange }) {
           [gala]: {
             ...(s[gala] || { gala }),
             juradoNominados: s[gala]?.juradoNominados || [],
-            profesorSalvoId: gstate.profesorSalvoId ?? s[gala]?.profesorSalvoId,
+            profesorSalvoId: votingState.profesorSalvoId ?? s[gala]?.profesorSalvoId,
             salvadoCompanerosId: ganador,
             finalNominees: nominadosRestantes,
-            favoritoId: gstate.favoritoId ?? s[gala]?.favoritoId,
-            top3Pct: gstate.top3Pct ?? s[gala]?.top3Pct,
+            favoritoId: votingState.favoritoId ?? s[gala]?.favoritoId,
+            top3Pct: votingState.top3Pct ?? s[gala]?.top3Pct,
             top3Ids: s[gala]?.top3Ids || [],
             duelSaved: s[gala]?.duelSaved,
             [gala]: s[gala]?.[gala] || {}
@@ -2824,27 +2837,57 @@ export default function SimuladorOT({ mode, onModeChange }) {
       }));
 
       // 👉 Cerrar gala
-      setStage("galaCerrada");
+      if (skipAnimation) setStage("galaCerrada");
+      else finishCeremony("galaCerrada");
 
       // === AVANZAR A LA SIGUIENTE GALA ===
       const goNext = () => {
-        const next = gala + 1;
+        const next = nextGala(gala,repechageEnabled);
         setGala(next);
         prepararNuevaGala(next, contestants);
       };
     }
 
 
-  // Gala 10
-    function gala10PuntuarJueces(){
+  // Gala 12
+    function applyScoreResults(pending) {
+      setGstate(pending.gstate);
+      setContestants(pending.contestants);
+      setSummaries(pending.summaries);
+      setGalaLogs(pending.galaLogs);
+      setStage(pending.stage);
+      setViewGala(gala);
+    }
+    function gala10PuntuarJueces(skipAnimation = false) {
+      const pending = captureScoreResult(calculateScoreResults, { gstate, contestants, summaries, galaLogs, stage }, gala);
+      if (pending.stage === stage) return; // Cancelled manual selection or invalid roster.
+      if (skipAnimation) { applyScoreResults(pending); return; }
+      const scores = pending.gstate.g10_scores;
+      const ids = Object.keys(scores);
+      const finalists = pending.summaries[gala].g10.top3;
+      setGstate(st => ({ ...st, scoreReveal: { ids, scores, finalists,
+        events: scoreEvents(ids, scores), shown: 0, revealedFinalists: 0, pending } }));
+      setViewGala(gala);
+      setStage("scoreReveal");
+    }
+    function advanceScoreReveal() {
+      const r = gstate.scoreReveal;
+      if (r.shown < r.events.length) {
+        setGstate(st => ({ ...st, scoreReveal: { ...r, shown: r.shown + 1 } }));
+      } else if (r.revealedFinalists < 3) {
+        setGstate(st => ({ ...st, scoreReveal: { ...r, revealedFinalists: r.revealedFinalists + 1 } }));
+      } else applyScoreResults(r.pending);
+    }
+
+    function calculateScoreResults({ gstate, contestants, summaries, setGstate, setContestants, setSummaries, setStage, pushLog }){
       // Activos deben ser 7
       const vivos = contestants.filter(c => c.status === "active");
-      if (vivos.length !== 7) { pushLog("⚠️ Para la Gala 10 deben quedar exactamente 7 activos."); return; }
+      if (vivos.length !== 7) { pushLog("⚠️ Para la Gala 12 deben quedar exactamente 7 activos."); return; }
 
       // ---- 1) Contar nominaciones por concursante en Galas 1–9
       const countNominaciones = (id) => {
         let n = 0;
-        for (let g = 1; g <= 9; g++) {
+        for (let g = 1; g <= 11; g++) {
           const s = summaries[g];
           if (!s) continue;
           if ((s.juradoNominados || []).includes(id)) n++;
@@ -2857,7 +2900,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
       const DEBUG_G10 = false;
       const SHOW_G10_SUMMARY = false;
       if (DEBUG_G10) {
-        pushLog(`📊 G10 bias debug: ${vivos.map(c => `${nameOf(c.id)} → ${nomCounts[c.id] || 0} nominaciones`).join(" · ")}`);
+        pushLog(`📊 G12 bias debug: ${vivos.map(c => `${nameOf(c.id)} → ${nomCounts[c.id] || 0} nominaciones`).join(" · ")}`);
       }
 
       const toHalf = (x) => Math.round(x * 2) / 2;
@@ -2873,7 +2916,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
         const elegidos = pickManually(idsVivos, true, nameOf, "Elige el Top 3 del jurado")?.slice(0,3);
         if (!elegidos || elegidos.length !== 3) { alert("Debes elegir 3 concursantes para el Top-3 del jurado."); return; }
         chosenTop3 = elegidos.map(String);
-        pushLog(`👑 Finalistas por jurado (G10, manual): <strong>${chosenTop3.map(id=>nameOf(id)).join(", ")}</strong>.`);
+        pushLog(`👑 Finalistas por jurado (G12, manual): <strong>${chosenTop3.map(id=>nameOf(id)).join(", ")}</strong>.`);
       }
       // ======= FIN MODO MANUAL =======
 
@@ -2900,13 +2943,18 @@ export default function SimuladorOT({ mode, onModeChange }) {
         const notas = [0,0,0,0].map(() => {
           const base   = randomHalfStep(5,10);
           const mix    = base*(1-ALPHA) + muTarget*ALPHA;
-          const noisy  = mix + jitterSigned(DEV);
+          const noisy  = mix + jitterSigned(DEV) - performanceNominationModifier(summaries[gala]?.performances?.[c.id]) * 4;
           return toHalf(clamp(noisy, 5, 10));
         });
 
         scores[c.id] = notas;
         sumas[c.id]  = +(notas.reduce((a,b)=>a+b,0)).toFixed(2);
       });
+
+      if (chosenTop3) {
+        alignFinalistScores(scores, chosenTop3);
+        vivos.forEach(c => { sumas[c.id] = scores[c.id].reduce((a, b) => a + b, 0); });
+      }
 
       // ---- 4) Orden, Top-3 y Bottom-4
       let orden = [...vivos].sort((a,b)=> sumas[b.id] - sumas[a.id]);
@@ -2922,31 +2970,33 @@ export default function SimuladorOT({ mode, onModeChange }) {
       const bottom4 = orden.slice(3);
 
       // ---- 5) Tabla/logs como tenías
-      const th = `<tr><th>Concursante</th><th>Juez 1</th><th>Juez 2</th><th>Juez 3</th><th>Juez 4</th><th>Total</th></tr>`;
+      const safeJudgeName = text => String(text).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+      const judgeHeaders = (summaries[gala]?.judges || ["Juez 1", "Juez 2", "Juez 3", "Juez 4"]).map(name => `<th>${safeJudgeName(name)}</th>`).join("");
+      const th = `<tr><th>Concursante</th>${judgeHeaders}<th>Total</th></tr>`;
       const rows = orden.map(c=>{
         const n = scores[c.id];
         return `<tr><td>${c.name}</td><td>${n[0].toFixed(1)}</td><td>${n[1].toFixed(1)}</td><td>${n[2].toFixed(1)}</td><td>${n[3].toFixed(1)}</td><td><strong>${sumas[c.id].toFixed(2)}</strong></td></tr>`;
       }).join("");
-      pushLog(`📋 Desglose jurado (G10):<div style="overflow:auto;"><table style="border-collapse:collapse;"><thead>${th}</thead><tbody>${rows}</tbody></table></div>`);
+      pushLog(`📋 Desglose jurado (G12):<div style="overflow:auto;"><table style="border-collapse:collapse;"><thead>${th}</thead><tbody>${rows}</tbody></table></div>`);
 
       // Marca finalistas Top-3
       setContestants(prev => prev.map(c => 
         top3.some(t=>t.id===c.id)
-          ? { ...c, status:"finalista", history:[...c.history,{gala,evento:"Finalista por jurado (G10)"}] }
+          ? { ...c, status:"finalista", history:[...c.history,{gala,evento:"Finalista por jurado (G12)"}] }
           : c
       ));
 
       if (SHOW_G10_SUMMARY) {
-        pushLog(`📊 <strong>Gala 10</strong> – Sumas del jurado: ${orden.map((x,i)=>`${i+1}. ${x.name} (${sumas[x.id].toFixed(2)})`).join(" · ")}.`);
+        pushLog(`📊 <strong>Gala 12</strong> – Sumas del jurado: ${orden.map((x,i)=>`${i+1}. ${x.name} (${sumas[x.id].toFixed(2)})`).join(" · ")}.`);
       }
 
       if (!chosenTop3) {
-        pushLog(`👑 Finalistas por jurado (G10): <strong>${top3.map(t=>t.name).join(", ")}</strong>. Nominados (4): ${bottom4.map(t=>t.name).join(", ")}.`);
+        pushLog(`👑 Finalistas por jurado (G12): <strong>${top3.map(t=>t.name).join(", ")}</strong>. Nominados (4): ${bottom4.map(t=>t.name).join(", ")}.`);
       } else {
         pushLog(`Nominados (4): ${bottom4.map(t=>t.name).join(", ")}.`);
       }
 
-      // Estado G10
+      // Estado G12
       setGstate(prev => ({ 
         ...prev,
         g10_scores: scores,
@@ -2954,7 +3004,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
         nominados:  bottom4.map(b=>b.id)
       }));
 
-      // Etiquetado adicional para reparto de la G10 (solo Top-3 → Finalista)
+      // Etiquetado adicional para reparto de la G12 (solo Top-3 → Finalista)
       setSummaries(s => {
         if (!s[gala] || !s[gala][gala] || !s[gala][gala].reparto) return s;
         const top3Ids = top3.map(t => t.id);
@@ -2975,7 +3025,7 @@ export default function SimuladorOT({ mode, onModeChange }) {
         return { ...s, [gala]: { ...(s[gala] || { gala }), [gala]: { ...(s[gala]?.[gala] || {}), reparto: rep } } };
       });
 
-      // Foto de G10 en summaries
+      // Foto de G12 en summaries
       setSummaries(s => ({
         ...s,
         [gala]: { 
@@ -3011,7 +3061,7 @@ function gala10Profes() {
     setContestants(prev =>
       prev.map(c =>
         c.id === salvado
-          ? { ...c, status: "finalista", history: [...c.history, { gala, evento: "4º finalista (profes, G10)" }] }
+          ? { ...c, status: "finalista", history: [...c.history, { gala, evento: "4º finalista (profes, G12)" }] }
           : c
       )
     );
@@ -3029,7 +3079,7 @@ function gala10Profes() {
       }
     }));
 
-    setStage("gala10_compas");
+    finishCeremony("gala10_compas");
     return; // 🔚 no sigas con la rama automática
   }
   // === FIN MODO MANUAL ===
@@ -3051,7 +3101,7 @@ function gala10Profes() {
     nombre: nameOf(id),
     nominaciones: countNomsThrough(id, summaries, countUntil, curList)
   }));
-  console.group("[G10 DEBUG] Profesores (menos nominaciones hasta G9)");
+  console.group("[G12 DEBUG] Profesores (menos nominaciones hasta G9)");
   console.table(debugData);
   console.log("=> 4º finalista (profes):", { id: salvado, nombre: nameOf(salvado) });
   console.groupEnd();
@@ -3059,12 +3109,12 @@ function gala10Profes() {
   setContestants(prev =>
     prev.map(c =>
       c.id === salvado
-        ? { ...c, status: "finalista", history: [...c.history, { gala, evento: "4º finalista (profes, G10)" }] }
+        ? { ...c, status: "finalista", history: [...c.history, { gala, evento: "4º finalista (profes, G12)" }] }
         : c
     )
   );
 
-  pushLog(`🎓 Profesores eligen 4º finalista (G10): <strong>${nameOf(salvado)}</strong>.`);
+  pushLog(`🎓 Profesores eligen 4º finalista (G12): <strong>${nameOf(salvado)}</strong>.`);
 
   const restantes = cand.filter(id => id !== salvado);
   setGstate({ ...gstate, nominados: restantes, profesorSalvoId: salvado });
@@ -3077,86 +3127,45 @@ function gala10Profes() {
     }
   }));
 
-  setStage("gala10_compas");
+  finishCeremony("gala10_compas");
 }
 
 
-    function gala10Compas() {
-      if (!gstate) return;
+    function gala10Compas(votingState = gstate, skipAnimation = false) {
+      if (!votingState) return;
 
       const electores = contestants.filter(c => c.status === "finalista").map(c => c.id);
-      const candidatos = gstate.nominados;
+      const candidatos = votingState.nominados;
       if (!Array.isArray(candidatos) || candidatos.length !== 3) {
-        pushLog("⚠️ No hay 3 nominados para la votación de compañeros (G10).");
+        pushLog("⚠️ No hay 3 nominados para la votación de compañeros (G12).");
         return;
       }
 
       // === 🧠 MODO MANUAL ===
-      if (manual) {
-        const ganador = pickManually(candidatos, false, nameOf, "Elige al 5º Finalista por los compañeros");
-        if (!ganador) return;
 
-        // marcar como 5º finalista
-        setContestants(prev => prev.map(c => 
-          c.id === ganador
-            ? { ...c, status: "finalista", history: [...(c.history || []), { gala, evento: "5º finalista (compañeros, G10)" }] }
-            : c
-        ));
-
-        pushLog(`🧑‍🤝‍🧑 Compañeros (modo manual) eligen 5º finalista: <strong>${nameOf(ganador)}</strong>.`);
-
-        const nominadosRestantes = candidatos.filter(id => id !== ganador);
-        setGstate({
-          ...gstate,
-          salvadoCompanerosId: ganador,
-          nominados: nominadosRestantes
-        });
-
-        setSummaries(s => ({
-          ...s,
-          [gala]: {
-            ...(s[gala] || { gala }),
-            g10: {
-              ...(s[gala]?.g10 || {}),
-              quinto: ganador,
-              restantes: nominadosRestantes
-            },
-            salvadoCompanerosId: ganador,
-            finalNominees: nominadosRestantes
-          }
-        }));
-
-        pushLog(`🟥 Nominados para la próxima gala: <strong>${nameOf(nominadosRestantes[0])}</strong> vs <strong>${nameOf(nominadosRestantes[1])}</strong>.`);
-        setCarryNominees(nominadosRestantes);
-
-        setSummaries(prev => rellenarValoracionesReparto(10, prev, contestants));
-        setStage("galaCerrada");
-        return; // 🔚 no sigas con la rama automática
-      }
       // === FIN MODO MANUAL ===
 
       // 👉 MODO AUTOMÁTICO (sin cambios)
-      const votos = [];
-      electores.forEach(v => {
-        const elegido = pickRandom(candidatos, 1)[0];
-        votos.push({ voterId: v, votedId: elegido });
-      });
+      const votos = votingState.ceremony?.votes || [];
+      if (votos.length !== electores.length) return;
 
       const votosList = votos.map(v => `<li>${nameOf(v.voterId)} → ${nameOf(v.votedId)}</li>`).join("");
-      pushLog(`🧑‍🤝‍🧑 Votación de compañeros (G10):<ul style="margin:4px 0 0 16px;">${votosList}</ul>`);
+      pushLog(`🧑‍🤝‍🧑 Votación de compañeros (G12):<ul style="margin:4px 0 0 16px;">${votosList}</ul>`);
 
       const recuento = { [candidatos[0]]:0, [candidatos[1]]:0, [candidatos[2]]:0 };
       votos.forEach(v => recuento[v.votedId]++);
-      pushLog(`📊 Recuento de votos (compañeros, G10): ${
+      pushLog(`📊 Recuento de votos (compañeros, G12): ${
         candidatos.map(id => `<strong>${nameOf(id)}</strong> ${recuento[id]}`).join(" · ")
       }`);
 
       let max = Math.max(...candidatos.map(id => recuento[id]));
       let empatados = candidatos.filter(id => recuento[id] === max);
+      const tiedInitially = [...empatados];
+      let tieReason = "";
       const huboEmpateInicial = (empatados.length > 1);
 
       if (huboEmpateInicial) {
-        const sumas = (summaries?.[gala]?.g10?.sumas) ?? gstate?.g10_sumas ?? null;
+        const sumas = (summaries?.[gala]?.g10?.sumas) ?? votingState?.g10_sumas ?? null;
         if (sumas) {
           const electorPrivilegiado = [...electores].sort((a,b) => {
             const sa = typeof sumas[a] === "number" ? sumas[a] : -Infinity;
@@ -3167,6 +3176,7 @@ function gala10Profes() {
           const suVoto = votos.find(v => v.voterId === electorPrivilegiado)?.votedId;
           if (suVoto && empatados.includes(suVoto)) {
             recuento[suVoto] += 1;
+            tieReason = `La mejor nota del jurado (${nameOf(electorPrivilegiado)}) añade un voto a ${nameOf(suVoto)}.`;
             pushLog(`🏅 Desempate: mejor nota del jurado (${nameOf(electorPrivilegiado)}) otorga +1 a <strong>${nameOf(suVoto)}</strong>.`);
           }
           max = Math.max(...candidatos.map(id => recuento[id]));
@@ -3177,24 +3187,29 @@ function gala10Profes() {
       const ganador = (empatados.length > 1) ? pickRandom(empatados, 1)[0] : empatados[0];
       if (!ganador) { pushLog("⚠️ No se pudo determinar el 5º finalista por compañeros."); return; }
 
+      if (empatados.length > 1) tieReason += ` El empate se resuelve por sorteo a favor de ${nameOf(ganador)}.`;
+      const peerTie = huboEmpateInicial ? { ids: tiedInitially, message: `Empate entre ${tiedInitially.map(nameOf).join(", ")}. ${tieReason}`, counts: recuento } : null;
+      if (peerTie) pushLog(peerTie.message);
+
       setContestants(prev => prev.map(c => c.id === ganador ? {
         ...c,
         status: "finalista",
-        history: [...(c.history || []), { gala, evento: "5º finalista (compañeros, G10)" }]
+        history: [...(c.history || []), { gala, evento: "5º finalista (compañeros, G12)" }]
       } : c));
 
       pushLog(`✅ Más votado por compañeros: <strong>${nameOf(ganador)}</strong> (5º finalista).`);
 
       setSummaries(s => ({
         ...s,
-        [10]: { ...(s[10] || { gala: 10 }), salvadoCompanerosId: ganador }
+        [12]: { ...(s[12] || { gala: 12 }), salvadoCompanerosId: ganador }
       }));
 
       const nominadosRestantes = candidatos.filter(id => id !== ganador);
-      const salvadosSet = new Set(gstate.salvados); salvadosSet.add(ganador);
+      const salvadosSet = new Set(votingState.salvados); salvadosSet.add(ganador);
 
       setGstate({
-        ...gstate,
+        ...votingState,
+        peerTie,
         votosCompaneros: votos,
         salvadoCompanerosId: ganador,
         nominados: nominadosRestantes,
@@ -3219,25 +3234,25 @@ function gala10Profes() {
 
       pushLog(`🟥 Nominados para la próxima gala: <strong>${nameOf(nominadosRestantes[0])}</strong> vs <strong>${nameOf(nominadosRestantes[1])}</strong>.`);
       setCarryNominees(nominadosRestantes);
-      setSummaries(prev => rellenarValoracionesReparto(10, prev, contestants));
-      setStage("galaCerrada");
+      setSummaries(prev => rellenarValoracionesReparto(12, prev, contestants));
+      if (skipAnimation) setStage("galaCerrada");
+      else finishCeremony("galaCerrada");
     }
 
 
 
 
     function g11_iniciarCiegos(){
-      if(carryNominees.length!==2){ pushLog("⚠️ En Gala 11 deben quedar 2 no-finalistas."); return; }
+      if(carryNominees.length!==2){ pushLog("⚠️ En Gala 13 deben quedar 2 no-finalistas."); return; }
       const [a,b]=carryNominees;
-      const { high, low } = randomDuelPercents();
-      const highForA = Math.random()<0.5;
-      const pctA = highForA?high:low;
-      const pctB = highForA?low:high;
+      const [pctA, pctB] = audiencePercentages([a, b], contestants, Math.random, 4, popularityEnabled);
       const winner = pctA>pctB ? a : b;
       const loser  = winner===a ? b : a;
 
-      setGstate(st=>({...st, g11:{ a,b,pctA,pctB,winner,loser, sentence:false, done:false }}));
-      pushLog(`📊 Porcentajes ciegos (G11): ${fmtPct(pctA)} · ${fmtPct(pctB)}.`);
+      setGstate(st=>({...st, g11:{ a,b,pctA,pctB,winner,loser, sentence:false, done:false }, ceremony: { kind: "duel", source: "finalDuel", ids: [a,b], pct: Math.max(pctA,pctB), phase: "intro" }}));
+      pushLog("Llega el momento de la verdad");
+      setViewGala(gala);
+      setStage("ceremony");
     }
 
     function g11_mostrarFrase(){
@@ -3250,7 +3265,8 @@ function gala10Profes() {
     function g11_revelar() {
       const P = gstate?.g11;
       if (!P) { pushLog("⚠️ No hay paquete preparado."); return; }
-      const { a, b, pctA, pctB, winner, loser } = P;
+      const { a, b, winner, loser } = P;
+      let { pctA, pctB } = P;
 
       const eq = (x,y) => String(x) === String(y);
       const nameOfSafe = (id) => {
@@ -3265,14 +3281,16 @@ function gala10Profes() {
 
         const manualLoser  = elegido;
         const manualWinner = eq(manualLoser, a) ? b : a;
+        const high = Math.max(pctA, pctB), low = Math.min(pctA, pctB);
+        [pctA, pctB] = eq(manualWinner, a) ? [high, low] : [low, high];
 
         // Actualiza estados usando eq(...)
         setContestants(prev => prev.map(c => {
           if (eq(c.id, manualWinner)) {
-            return { ...c, status: "finalista", history: [...(c.history||[]), { gala, evento: "6º finalista (público, G11, manual)" }] };
+            return { ...c, status: "finalista", history: [...(c.history||[]), { gala, evento: "6º finalista (público, G13, manual)" }] };
           }
           if (eq(c.id, manualLoser)) {
-            return { ...c, status: "eliminado", history: [...(c.history||[]), { gala, evento: "Eliminado (G11, manual)" }] };
+            return { ...c, status: "eliminado", history: [...(c.history||[]), { gala, evento: "Eliminado (G13, manual)" }] };
           }
           return c;
         }));
@@ -3311,14 +3329,14 @@ function gala10Profes() {
         });
 
         setGstate(st => ({ ...st, g11: { ...st.g11, done: true } }));
-        setStage("galaCerrada");
+        finishCeremony("galaCerrada");
         return;
       }
 
       // === Automático (igual que tenías) ===
       setContestants(prev=>prev.map(c=>
-        eq(c.id, winner) ? { ...c, status:"finalista", history:[...c.history,{gala,evento:"6º finalista (público, G11)"}] } :
-        eq(c.id, loser)  ? { ...c, status:"eliminado", history:[...c.history,{gala,evento:"Eliminado (G11)"}] } : c
+        eq(c.id, winner) ? { ...c, status:"finalista", history:[...c.history,{gala,evento:"6º finalista (público, G13)"}] } :
+        eq(c.id, loser)  ? { ...c, status:"eliminado", history:[...c.history,{gala,evento:"Eliminado (G13)"}] } : c
       ));
 
       pushLog(`🗳️ <strong>${nameOfSafe(winner)}</strong>. ${nameOfSafe(loser)} es eliminado/a.`);
@@ -3348,38 +3366,35 @@ function gala10Profes() {
       });
 
       setGstate(st=>({...st, g11:{ ...st.g11, done:true }}));
-      setStage("galaCerrada");
+      finishCeremony("galaCerrada");
     }
 
 
 
-  // Gala 11
+  // Gala 13
   function gala11Publico(){
-    if(carryNominees.length!==2){ pushLog("⚠️ En Gala 11 deben quedar 2 no-finalistas."); return; }
+    if(carryNominees.length!==2){ pushLog("⚠️ En Gala 13 deben quedar 2 no-finalistas."); return; }
     const [a,b]=carryNominees;
-    const { high, low } = randomDuelPercents();
-    const highForA = Math.random()<0.5;
-    const pctA = highForA?high:low;
-    const pctB = highForA?low:high;
+    const [pctA, pctB] = audiencePercentages([a, b], contestants, Math.random, 4, popularityEnabled);
     const winner = pctA>pctB ? a : b;
     const loser  = winner===a ? b : a;
     setContestants(prev=>prev.map(c=>
-      c.id===winner ? { ...c, status:"finalista", history:[...c.history,{gala,evento:"6º finalista (público, G11)"}] } :
-      c.id===loser  ? { ...c, status:"eliminado", history:[...c.history,{gala,evento:"Eliminado (G11)"}] } : c
+      c.id===winner ? { ...c, status:"finalista", history:[...c.history,{gala,evento:"6º finalista (público, G13)"}] } :
+      c.id===loser  ? { ...c, status:"eliminado", history:[...c.history,{gala,evento:"Eliminado (G13)"}] } : c
     ));
-    pushLog(`🏆 Resultado público (G11): ${nameOf(a)} ${fmtPct(pctA)} · ${nameOf(b)} ${fmtPct(pctB)} → Se salva <strong>${nameOf(winner)}</strong>.`);
+    pushLog(`🏆 Resultado público (G13): ${nameOf(a)} ${fmtPct(pctA)} · ${nameOf(b)} ${fmtPct(pctB)} → Se salva <strong>${nameOf(winner)}</strong>.`);
     const seis = contestants.filter(c=> (c.id===winner?true:c.status==="finalista")).map(c=>c.name);
     pushLog(`✅ Finalistas anunciados: ${seis.join(", ")}.`);
     setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), g11:{ a,b,pctA,pctB,winner } }}));
     setCarryNominees([]);
-    // Etiquetar reparto de la G11
+    // Etiquetar reparto de la G13
     setSummaries(s => {
       if (!s[gala] || !s[gala][gala] || !s[gala][gala].reparto) return s;
 
       // pcts por id
       const pctMap = { [a]: pctA, [b]: pctB };
       const rep = s[gala][gala].reparto.map(row => {
-        const id = row.members[0]; // en G11 son solos
+        const id = row.members[0]; // en G13 son solos
         const c  = contestants.find(x => x.id === id);
         if (!c) return row;
         const g  = c.gender ?? "e";
@@ -3390,13 +3405,13 @@ function gala10Profes() {
           return { ...row, valor: "Finalista" };
         }
 
-        // Ganador del duelo de G11 → "Salvado por el público (%) > Finalista"
+        // Ganador del duelo de G13 → "Salvado por el público (%) > Finalista"
         if (id === winner) {
           const pct = pctMap[id];
           return { ...row, valor: `Salvad${suf} por el público (${pct.toFixed(2)}%) > Finalista` };
         }
 
-        // Eliminado en G11 → "Expulsado por el público (%)"
+        // Eliminado en G13 → "Expulsado por el público (%)"
         if (id === loser) {
           const pct = pctMap[id];
           return { ...row, valor: `Expulsad${suf} por el público (${pct.toFixed(2)}%)` };
@@ -3411,16 +3426,73 @@ function gala10Profes() {
   }
 
   // Galas 12–14 – modo de revelado por pasos
+  function selectPublicIdentity(id) {
+    setGstate(st => ({ ...st, publicReveal: { ...st.publicReveal, selectedId: id } }));
+  }
+  function advancePublicReveal() {
+    const r = gstate.publicReveal;
+    if (!r) return;
+    if (r.screen === "announce") {
+      const target = r.targets[r.cursor];
+      const chosen = manual ? r.selectedId : r.entries[target].id;
+      if (!chosen) return;
+      const next = assignPublicPercentage(r, chosen);
+      if (!next) return;
+      if (r.kind === "duel") {
+        const bottom = next.entries.slice(-2);
+        setGstate(st => ({ ...st, g12: { ...st.g12, tabla: next.entries,
+          revealed: new Set(next.visible.map(index => String(next.entries[index].id))),
+          revealQueue: next.entries.filter((_, index) => !next.visible.includes(index)).map(row => row.id),
+          pendingPick: null, bottomHigh: bottom[0], bottomLow: bottom[1] } }));
+        pushLog(`🔎 ${fmtPct(next.entries[target].pct)} pertenece a <strong>${nameOf(chosen)}</strong>.`);
+      } else {
+        const prepared = { ...gstate, g15: { ...gstate.g15, tabla: next.entries } };
+        if (target === 2) g15_revealThird(prepared, true);
+        else g15_revealWinner(prepared, true);
+        setGstate(st => ({ ...st, g15: { ...st.g15, tabla: next.entries } }));
+      }
+      setGstate(st => ({ ...st, publicReveal: next }));
+      setStage("publicReveal");
+      return;
+    }
+    if (r.screen === "revealed") {
+      if (r.cursor + 1 < r.targets.length) {
+        setGstate(st => ({ ...st, publicReveal: { ...r, cursor: r.cursor + 1, screen: "announce", selectedId: "" } }));
+      } else {
+        if (r.kind === "duel") {
+          setGstate(st => ({ ...st, publicReveal: { ...r, screen: "duel", selectedId: "" } }));
+        } else {
+          setGstate(st => ({ ...st, publicReveal: undefined }));
+          setStage("galaCerrada");
+        }
+      }
+      return;
+    }
+    if (r.screen === "duel") {
+      if (manual && !r.selectedId) return;
+      g12_duel(gstate, r.selectedId || null);
+      setGstate(st => ({ ...st, publicReveal: { ...r, screen: "duelResult", selectedId: "" } }));
+      setStage("publicReveal");
+      return;
+    }
+    setGstate(st => ({ ...st, publicReveal: undefined }));
+    setStage("galaCerrada");
+  }
+
   function g12_setup(){
     const enJuego=contestants.filter(c=>c.status==="finalista");
     if(enJuego.length<3){ pushLog("⚠️ Deben quedar al menos 3 finalistas para 12–14."); return; }
-    const pcts=randomPercentages(enJuego.length);
+    const pcts=audiencePercentages(enJuego.map(c => c.id), contestants, Math.random, 4, popularityEnabled);
     const tabla=enJuego.map((c,i)=>({id:c.id,name:c.name,pct:pcts[i]})).sort((a,b)=>b.pct-a.pct);
     const onlyPcts=tabla.map(t=>fmtPct(t.pct));
     const revealQueue=shuffle(tabla.map(t=>t.id));
     const bottom2=[...tabla].slice(-2).sort((a,b)=>a.pct-b.pct); // low then high
     setGstate(st=>({...st, g12:{ tabla, revealQueue, revealed:new Set(), bottomLow:bottom2[0], bottomHigh:bottom2[1], duelDone:false }}));
     pushLog(`📊 <strong>Gala ${gala}</strong> – Porcentajes ciegos: ${onlyPcts.join(" · ")}.`);
+    setGstate(st => ({ ...st, publicReveal: createPublicReveal(tabla, "duel", 2) }));
+    setViewGala(gala);
+    setStage("publicReveal");
+
   }
 
   function g12_revealNext() {
@@ -3532,8 +3604,8 @@ function gala10Profes() {
   }
 
 
-  function g12_duel() {
-    const G = gstate?.g12;
+  function g12_duel(currentState = gstate, chosenWinner = null) {
+    const G = currentState?.g12;
     if (!G) return;
 
     const { duelDone, tabla } = G;
@@ -3574,7 +3646,7 @@ function gala10Profes() {
       const { high, low } = randomDuelPercents();
 
       // Tú eliges el ganador del duelo
-      const winnerId = pickManually([bottomA.id, bottomB.id], false, nameFromTabla, "Elige al ganador del duelo");
+      const winnerId = chosenWinner || pickManually([bottomA.id, bottomB.id], false, nameFromTabla, "Elige al ganador del duelo");
       if (!winnerId) return;
       const winner = eq(winnerId, bottomA.id) ? bottomA : bottomB;
       const loser  = eq(winnerId, bottomA.id) ? bottomB : bottomA;
@@ -3614,8 +3686,8 @@ function gala10Profes() {
 
         const gElim  = contestants.find(x => eq(x.id, loserId2))?.gender ?? "e";
         const sufNum = gElim === "m" ? "º" : gElim === "f" ? "ª" : "º/ª";
-        const puesto = gala === 12 ? `6${sufNum} Finalista`
-                      : gala === 13 ? `5${sufNum} Finalista`
+        const puesto = gala === 14 ? `6${sufNum} Finalista`
+                      : gala === 15 ? `5${sufNum} Finalista`
                       : `4${sufNum} Finalista`;
 
         const rep = s[gala][gala].reparto.map(row => {
@@ -3641,8 +3713,9 @@ function gala10Profes() {
     const { bottomLow, bottomHigh } = G;
     if (!bottomLow || !bottomHigh) { pushLog("⚠️ No hay duelistas definidos para el modo automático.", gala); return; }
 
-    const { high, low } = randomDuelPercents();
-    const winner = Math.random() < 0.55 ? bottomHigh : bottomLow;
+    const duelPcts = audiencePercentages([bottomHigh.id, bottomLow.id], contestants, Math.random, 4, popularityEnabled);
+    const high = Math.max(...duelPcts), low = Math.min(...duelPcts);
+    const winner = duelPcts[0] > duelPcts[1] ? bottomHigh : bottomLow;
     const loser  = winner.id === bottomLow.id ? bottomHigh : bottomLow;
 
     pushLog(`🔴 ${fmtPct(bottomHigh.pct)} pertenece a <strong>${bottomHigh.name}</strong> (nominado al duelo).`);
@@ -3681,8 +3754,8 @@ function gala10Profes() {
 
       const gElim  = contestants.find(x => eq(x.id, loserId))?.gender ?? "e";
       const sufNum = gElim === "m" ? "º" : gElim === "f" ? "ª" : "º/ª";
-      const puesto = gala === 12 ? `6${sufNum} Finalista`
-                    : gala === 13 ? `5${sufNum} Finalista`
+      const puesto = gala === 14 ? `6${sufNum} Finalista`
+                    : gala === 15 ? `5${sufNum} Finalista`
                     : `4${sufNum} Finalista`;
 
       const rep = s[gala][gala].reparto.map(row => {
@@ -3706,25 +3779,29 @@ function gala10Profes() {
 
 
 
-  // Final (G15) – revelado por pasos
+  // Final (G17) – revelado por pasos
   function g15_setup(){
     const enJuego=contestants.filter(c=>c.status==="finalista");
     if(enJuego.length!==3){ pushLog("⚠️ En la final deben quedar 3 finalistas."); return; }
-    const pcts=randomPercentages(3);
+    const pcts=audiencePercentages(enJuego.map(c => c.id), contestants, Math.random, 4, popularityEnabled);
     const tabla=enJuego.map((c,i)=>({id:c.id,name:c.name,pct:pcts[i]})).sort((a,b)=>b.pct-a.pct);
-    pushLog(`🏁 <strong>Gala 15 – Final</strong>: porcentajes ciegos ${tabla.map(t=>fmtPct(t.pct)).join(" · ")}.`);
+    pushLog(`🏁 <strong>Gala 17 – Final</strong>: porcentajes ciegos ${tabla.map(t=>fmtPct(t.pct)).join(" · ")}.`);
     setGstate(st=>({...st, g15:{ tabla, thirdRevealed:false, winnerRevealed:false }}));
-  }
-    function g15_revealThird() {
-      if (!gstate?.g15) { pushLog("⚠️ Primero pulsa '📊 Mostrar porcentajes ciegos (Final)'."); return; }
-      if (gstate.g15.thirdRevealed) { pushLog("ℹ️ El tercer clasificado ya fue revelado."); return; }
+    setGstate(st => ({ ...st, publicReveal: createPublicReveal(tabla, "final", 2) }));
+    setViewGala(gala);
+    setStage("publicReveal");
 
-      const tabla = gstate.g15.tabla || [];
+  }
+    function g15_revealThird(currentState = gstate, automatic = false) {
+      if (!currentState?.g15) { pushLog("⚠️ Primero pulsa '📊 Mostrar porcentajes ciegos (Final)'."); return; }
+      if (currentState.g15.thirdRevealed) { pushLog("ℹ️ El tercer clasificado ya fue revelado."); return; }
+
+      const tabla = currentState.g15.tabla || [];
       const eq = (a,b) => String(a) === String(b);
       const nameFromTabla = (id) => (tabla.find(t => eq(t.id, id))?.name) || nameOf(id) || String(id);
 
       // —— MANUAL: eliges 3º/3ª (no tocamos el reparto aquí) ——
-      if (manual) {
+      if (manual && !automatic) {
         const ids = tabla.map(t => t.id);
         const terceroId = pickManually(ids, false, nameFromTabla, "Elige al 3º/3ª Finalista");
         if (!terceroId) return;
@@ -3741,23 +3818,23 @@ function gala10Profes() {
     }
 
 
-    function g15_revealWinner() {
-      if (!gstate?.g15) { pushLog("⚠️ Primero pulsa '📊 Mostrar porcentajes ciegos (Final)'."); return; }
-      if (!gstate.g15.thirdRevealed) { pushLog("⚠️ Primero revela el tercer clasificado."); return; }
-      if (gstate.g15.winnerRevealed) { pushLog("ℹ️ El ganador ya fue revelado."); return; }
+    function g15_revealWinner(currentState = gstate, automatic = false) {
+      if (!currentState?.g15) { pushLog("⚠️ Primero pulsa '📊 Mostrar porcentajes ciegos (Final)'."); return; }
+      if (!currentState.g15.thirdRevealed) { pushLog("⚠️ Primero revela el tercer clasificado."); return; }
+      if (currentState.g15.winnerRevealed) { pushLog("ℹ️ El ganador ya fue revelado."); return; }
 
-      const tabla = gstate.g15.tabla || [];
+      const tabla = currentState.g15.tabla || [];
       const eq = (a,b) => String(a) === String(b);
       const nameFromTabla = (id) => (tabla.find(t => eq(t.id, id))?.name) || nameOf(id) || String(id);
-      const thirdId = gstate.g15.thirdId ?? tabla[2]?.id;
+      const thirdId = currentState.g15.thirdId ?? tabla[2]?.id;
 
     // —— MODO MANUAL: eliges ganador entre los 2 restantes ——
-    if (manual) {
-      const tabla = gstate.g15.tabla || [];
+    if (manual && !automatic) {
+      const tabla = currentState.g15.tabla || [];
       const eq = (a,b) => String(a) === String(b);
       const nameFromTabla = (id) => (tabla.find(t => eq(t.id, id))?.name) || nameOf(id) || String(id);
 
-      const thirdId = gstate.g15.thirdId ?? tabla[2]?.id;
+      const thirdId = currentState.g15.thirdId ?? tabla[2]?.id;
       const restantes = tabla.map(t => t.id).filter(id => !eq(id, thirdId));
       if (restantes.length !== 2) { pushLog("⚠️ No hay 2 finalistas restantes para elegir ganador."); return; }
 
@@ -3771,7 +3848,7 @@ function gala10Profes() {
       // Marca ganador en contestants
       setContestants(prev =>
         prev.map(c => eq(c.id, winnerId)
-          ? { ...c, status: "ganador", history: [...(c.history||[]), { gala, evento: "Ganador/a (G15)" }] }
+          ? { ...c, status: "ganador", history: [...(c.history||[]), { gala, evento: "Ganador/a (G17)" }] }
           : c
         )
       );
@@ -3837,7 +3914,7 @@ function gala10Profes() {
 
       setContestants(prev =>
         prev.map(c => c.id === ganador.id
-          ? { ...c, status: "ganador", history: [...c.history, { gala, evento: "Ganador/a (G15)" }] }
+          ? { ...c, status: "ganador", history: [...c.history, { gala, evento: "Ganador/a (G17)" }] }
           : c
         )
       );
@@ -3898,14 +3975,9 @@ function gala10Profes() {
           }}
         />
         <div className="flex gap-2 w-full sm:w-auto">
-          {canPickRoster && (
-            <Button
-              onClick={() => setRoute("selector")}
-              className="flex-1 sm:flex-none px-3 py-2 text-sm sm:px-4 sm:py-2 sm:text-base"
-            >
-              {/* etiqueta corta en móvil, larga en ≥sm */}
-              <span className="sm:hidden">Elegir concursantes</span>
-              <span className="hidden sm:inline">👥 Elegir Concursantes OT</span>
+          {contestants.length === 0 && (
+            <Button onClick={() => document.getElementById("roster-search")?.focus()}>
+              👥 Elegir concursantes OT
             </Button>
           )}
           <Button
@@ -3920,72 +3992,14 @@ function gala10Profes() {
 
       {contestants.length === 0 && (
         <Card>
-          <CardContent className="p-6 space-y-4">
-            <p className="text-sb text-muted-foreground">
-              Haz click en el Botón <strong>Elegir Concursantes OT</strong> y selecciona a 18 concursantes.
-              (¡Si tenías ya nombres aquí asegúrate de dejar espacio en esta lista antes!)
-            </p>
-            <p className="text-sb text-muted-foreground">
-              Puedes también <strong>crear</strong> a tu propio concursante con sus estadísticas propias. Al guardar lo podrás
-              utilizar en este navegador cuando quieras. Si escribes el nombre directamente en esta lista no tendrá estadísticas
-              y podría ser más propenso a la nominación.
-            </p>
-            <p className="text-xs text-muted-foreground">
-              El género se escribe para que la Tabla de Recorrido trate a cada concursante por el género que le corresponda.
-              Si no se selecciona un género este será No Binario por defecto.
-            </p>
-
-            <Textarea rows={12} value={namesInput} onChange={(e) => setNamesInput(e.target.value)} />
-
-            {/* 🧩 Barra de acciones responsive */}
-            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-              {/* Fila 1: botones principales */}
-              <div className="flex w-full gap-2 sm:w-auto">
-                <Button onClick={iniciar}>▶️ Iniciar</Button>
-                <Button variant="outline" onClick={clearTypedList}>Limpiar lista</Button>
-              </div>
-
-              {/* Fila 2: modo manual + selector */}
-              <div className="flex w-full items-center gap-3 sm:w-auto sm:ml-auto">
-                <label className="flex items-center gap-2 text-sm whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    checked={manual}
-                    onChange={(e) => setManual(e.target.checked)}
-                    className="h-5 w-5 sm:h-4 sm:w-4"
-                  />
-                  Modo manual
-                </label>
-
-                {/* Selector de modo */}
-                <div className="min-w-0 flex-1 sm:flex-none">
-                  <select
-                    className="w-full border rounded-md px-2 py-1 text-sm bg-white"
-                    value={mode}
-                    onChange={(e) => onModeChange?.(e.target.value)}
-                  >
-                    <option value="telecinco">OT (Telecinco, 2005–2011)</option>
-                    <option value="rtve">OT (RTVE, 2017–2020)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          </CardContent>
+          <JudgeSetup judges={judgeNames} onChange={setJudgeNames} />
+          <OTRosterPicker roster={roster} onChange={updateRoster} onStart={iniciar} />
         </Card>
       )}
+      <SeasonSettings repechageOption={repechageOption} setRepechageOption={setRepechageOption} relationshipsEnabled={relationshipsEnabled} setRelationshipsEnabled={setRelationshipsEnabled} popularityEnabled={popularityEnabled} setPopularityEnabled={setPopularityEnabled} manual={manual} setManual={setManual} mode={mode}
+        onModeChange={onModeChange} started={contestants.length > 0} />
 
-      {/* 🔘 Botón flotante para alternar modo manual (sigue igual) */}
-      <button
-        onClick={() => setManual((m) => !m)}
-        className={`fixed bottom-4 right-4 px-3 py-2 rounded-full shadow transition 
-                    ${manual ? "bg-emerald-600 text-white" : "bg-neutral-200"}`}
-        title="Alternar modo manual"
-      >
-        {manual ? "Manual: ON" : "Manual: OFF"}
-      </button>
-
-
-
+      {contestants.length > 0 && (
       <Button
         onClick={() => {
           try {
@@ -4003,6 +4017,7 @@ function gala10Profes() {
       >
         💾 Guardar
       </Button>
+      )}
 
       <Button
         variant="outline"
@@ -4013,8 +4028,7 @@ function gala10Profes() {
             const packed = localStorage.getItem("ot_save_" + code.trim());
             if (!packed) throw new Error("No existe ese código en este navegador.");
             const payload = unpackState(packed);
-            applyLoadedState(payload);
-            onModeChange?.(payload.mode || mode);
+            onLoadSeason(payload);
             alert("Simulación cargada correctamente.");
           } catch (e) {
             alert("Error al cargar: " + e.message);
@@ -4024,14 +4038,14 @@ function gala10Profes() {
         ⬇️ Cargar
       </Button>
 
-          <p className="text-xs text-muted-foreground">
-           Antes de <strong>cargar</strong> un simulador selecciona primero el Modo en el qué jugaste a ese simulador.
-          </p>
-
 
       <center><p className="text-xs text-muted-foreground"><strong>Simulador OT (2025)</strong> - Para cualquier duda o sugerencia escríbenos a otsimulador@gmail.com</p></center>
 
-      {contestants.length>0 && (
+      {academyBlocked && academyChat && <ChatReveal chat={academyChat} contestants={contestants} gala={shownGala(chatGala)} onNext={nextChat} onSkip={skipChat} />}
+      {academyBlocked && !academyChat && <AcademyWeek week={academyWeek} reparto={academyReparto} groupSong={summaries[gala]?.[gala]?.groupSong}
+        contestants={contestants} gala={shownGala(gala)} onNext={advanceAcademy} onSkip={skipPerformances} onSkipEvents={skipEvents} />}
+      {!academyBlocked && contestants.length > 0 && <AcademySummary week={academy.weeks[viewGala]} contestants={contestants} />}
+      {contestants.length>0 && !academyBlocked && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Card className="lg:col-span-2">
             <CardContent className="p-6 space-y-4">
@@ -4043,20 +4057,11 @@ function gala10Profes() {
                 <Badge variant="outline">Etapa: {stage}</Badge>
               </div>
 
-              {gala <= 9 && (
+              {gala <= 11 && (
   <>
             {/* === Controles específicos de la GALA 0 === */}
             {gala === 0 && (
               <div className="flex flex-wrap gap-2">
-                {stage === "g0_eval" && (
-                  <Button onClick={g0_revealNext}>🔎 Revelar siguiente (Gala 0)</Button>
-                )}
-                {stage === "g0_profes" && (
-                  <Button onClick={g0_profesSalvan}>🎓 Profesores salvan</Button>
-                )}
-                {stage === "g0_publico" && (
-                  <Button onClick={g0_publicoVota}>🗳️ Votación del público</Button>
-                )}
                 {stage === "g0_cerrar" && (
                   <Button onClick={g0_cerrar}>✅ Cerrar Gala 0 y pasar a Gala 1</Button>
                 )}
@@ -4067,7 +4072,7 @@ function gala10Profes() {
             <div className="flex flex-wrap gap-2">
               <div className="flex flex-wrap gap-2">
             {stage === "dueloPendiente" && (
-              <Button onClick={iniciarDueloCiego}>📊 Porcentajes ciegos (duelo)</Button>
+              <Button onClick={iniciarDueloCiego}>Llega el momento de la verdad</Button>
             )}
             {stage === "duelo_ciegos" && (
               <Button onClick={dueloMostrarFrase}>🗣️ Mostrar frase del presentador</Button>
@@ -4076,30 +4081,41 @@ function gala10Profes() {
               <Button onClick={dueloRevelar}>⚔️ Revelar salvado y eliminado</Button>
             )}
 
-            {stage === "votoPublico" && (
+            {stage === "votoPublico" && !gstate?.top3Shown && (
               <Button onClick={iniciarVotoPublico} disabled={gstate?.top3Shown}>
-                🧪 Mostrar 3 más votados
+                🎤 Presentar favoritos
               </Button>
             )}
             {gstate.top3?.length > 0 && stage === "votoPublico" && (
-              <Button onClick={revelarTop3YFavorito}>✅ Revelar favorito y porcentajes Top3</Button>
+              gstate.favoriteRevealed ? (
+                <Button onClick={() => { setStage("juradoEvaluando"); setViewGala(gala); }}>Continuar con las valoraciones</Button>
+              ) : (
+                <Button onClick={revelarTop3YFavorito}>
+                  {(gstate.top3RevealCount ?? (gstate.top3NamesRevealed ? 3 : 0)) < 3 ? "⭐ Revelar siguiente favorito" : "🌟 Revelar al favorito de la semana"}
+                </Button>
+              )
             )}
 
             {/* 👇 FALTA ESTE: valoración del jurado */}
             {stage === "juradoEvaluando" && (
-              <Button onClick={evaluarSiguientePorJurado}>⚖️ Evaluar siguiente concursante</Button>
+              <>
+                <Button onClick={() => evaluarSiguientePorJurado(false)}>
+                  {gstate.currentEvaluadoId ? "⚖️ Siguiente: revelar resultado" : "⚖️ Siguiente"}
+                </Button>
+                <Button variant="outline" onClick={() => evaluarSiguientePorJurado(true)}>Revelar todo</Button>
+              </>
             )}
 
             {/* Y estos dos para cerrar la nominación como siempre */}
             {stage === "profesSalvan" && (
-              <Button onClick={profesoresSalvanUno}>🎓 Profesores salvan</Button>
+              <Button onClick={() => startCeremony("teachers", gstate.nominados, "teachers")}>🎓 Profesores salvan</Button>
             )}
             {stage === "companerosVotan" && (
-              <Button onClick={companerosVotan}>🧑‍🤝‍🧑 Compañeros votan</Button>
+              <Button onClick={() => startCeremony("peers", gstate.nominados, "peers", Array.from(gstate.salvados))}>🧑‍🤝‍🧑 Compañeros votan</Button>
             )}
             {stage === "galaCerrada" && (
             <Button onClick={goNext}>
-              {`✅ Cerrar Gala ${gala} y pasar a Gala ${gala + 1}`}
+              {`✅ Cerrar Gala ${shownGala(gala)} y pasar a Gala ${shownGala(nextGala(gala,repechageEnabled))}`}
             </Button>
            )}
               </div>
@@ -4107,11 +4123,11 @@ function gala10Profes() {
           </>
         )}
 
-              {gala===10 && (
+              {gala===12 && (
                 <div className="flex flex-wrap gap-2">
-                      {/* 👇 Nuevo flujo en 3 pasos para el duelo previo a G10 */}
+                      {/* 👇 Nuevo flujo en 3 pasos para el duelo previo a G12 */}
                   {stage==="dueloPendiente" && (
-                    <Button onClick={iniciarDueloCiego}>📊 Porcentajes ciegos (previo a G10)</Button>
+                    <Button onClick={iniciarDueloCiego}>Llega el momento de la verdad</Button>
                   )}
                   {stage==="duelo_ciegos" && (
                     <Button onClick={dueloMostrarFrase}>🗣️ Mostrar frase del presentador</Button>
@@ -4119,17 +4135,17 @@ function gala10Profes() {
                   {stage==="duelo_revelar" && (
                     <Button onClick={dueloRevelar}>⚔️ Revelar salvado y eliminado</Button>
                   )}
-                  {stage==="gala10_jueces" && (<Button onClick={gala10PuntuarJueces}>🧮 Puntuar jurado (G10)</Button>)}
-                  {stage==="gala10_profes" && (<Button onClick={gala10Profes}>🎓 Profesores eligen 4º finalista</Button>)}
-                  {stage==="gala10_compas" && (<Button onClick={gala10Compas}>🧑‍🤝‍🧑 Compañeros eligen 5º finalista</Button>)}
+                  {stage==="gala10_jueces" && (<><Button onClick={() => gala10PuntuarJueces(false)}>🧮 Puntuar jurado (G{shownGala(12)})</Button><Button variant="outline" onClick={() => gala10PuntuarJueces(true)}>Revelar todo</Button></>)}
+                  {stage==="gala10_profes" && (<Button onClick={() => startCeremony("teachers", gstate.nominados, "specialTeachers")}>🎓 Profesores eligen 4º finalista</Button>)}
+                  {stage==="gala10_compas" && (<Button onClick={() => startCeremony("peers", gstate.nominados, "specialPeers", contestants.filter(c => c.status === "finalista").map(c => c.id))}>🧑‍🤝‍🧑 Compañeros eligen 5º finalista</Button>)}
                   {stage==="galaCerrada" && (<Button onClick={goNext}>⏭️ Cerrar gala y pasar a la siguiente</Button>)}
                 </div>
               )}
 
-              {gala===11 && (
+              {gala===13 && (
                 <div className="flex flex-wrap gap-2">
                   {stage==="gala11_publico" && !gstate?.g11 && (
-                  <Button onClick={g11_iniciarCiegos}>📊 Porcentajes ciegos (G11)</Button>
+                  <Button onClick={g11_iniciarCiegos}>Llega el momento de la verdad</Button>
                 )}
                 {stage==="gala11_publico" && gstate?.g11 && !gstate.g11.sentence && (
                   <Button onClick={g11_mostrarFrase}>🗣️ Mostrar frase del presentador</Button>
@@ -4142,7 +4158,7 @@ function gala10Profes() {
                 </div>
               )}
 
-              {gala>=12 && gala<=14 && (
+              {gala>=14 && gala<=16 && (
                 <div className="flex flex-wrap gap-2">
                   {stage==="g12_14_publico" && !gstate?.g12 && (
                     <Button onClick={g12_setup}>📊 Mostrar porcentajes ciegos</Button>
@@ -4151,17 +4167,17 @@ function gala10Profes() {
                     <Button onClick={g12_revealNext}>🔍 Revelar porcentaje → concursante</Button>
                   )}
                   {stage==="g12_14_publico" && gstate?.g12 && gstate.g12.revealQueue?.length===0 && !gstate.g12.duelDone && (
-                    <Button onClick={g12_duel}>⚔️ Resolver duelo</Button>
+                    <Button onClick={() => g12_duel()}>⚔️ Resolver duelo</Button>
                   )}
                   {stage==="galaCerrada" && (<Button onClick={goNext}>⏭️ Cerrar gala y pasar a la siguiente</Button>)}
                 </div>
               )}
 
-              {gala>=15 && (
+              {gala>=17 && (
                 <div className="flex flex-wrap gap-2">
                   {stage==="g15_final" && !gstate?.g15 && (<Button onClick={g15_setup}>📊 Mostrar porcentajes ciegos (Final)</Button>)}
-                  {stage==="g15_final" && gstate?.g15 && !gstate.g15.thirdRevealed && (<Button onClick={g15_revealThird}>🥉 Revelar tercer clasificado</Button>)}
-                  {stage==="g15_final" && gstate?.g15 && gstate.g15.thirdRevealed && !gstate.g15.winnerRevealed && (<Button onClick={g15_revealWinner}>👑 Revelar ganador</Button>)}
+                  {stage==="g15_final" && gstate?.g15 && !gstate.g15.thirdRevealed && (<Button onClick={() => g15_revealThird()}>🥉 Revelar tercer clasificado</Button>)}
+                  {stage==="g15_final" && gstate?.g15 && gstate.g15.thirdRevealed && !gstate.g15.winnerRevealed && (<Button onClick={() => g15_revealWinner()}>👑 Revelar ganador</Button>)}
                 </div>
               )}
 
@@ -4235,21 +4251,44 @@ function gala10Profes() {
 
                 <TabsContent value="historial" className="mt-4 space-y-3">
                   <div className="flex flex-wrap gap-2">
-                    {Array.from({length:gala+1},(_,i)=>i).map(g => (
+                    {visibleGalas(gala,repechageEnabled).map(g => (
                         <Button key={g} size="sm" variant={g===viewGala?"default":"outline"} onClick={()=>setViewGala(g)}>
-                          Gala {g}
+                          Gala {shownGala(g)}
                         </Button>
                       ))}
                   </div>
+                  {gala === 0 && viewGala === 0 && ["g0_eval", "g0_profes", "g0_publico"].includes(stage) ? (
+                    <GalaZeroReveal performances={summaries[0]?.performances} stage={stage} reveal={gstate.g0Reveal} state={gstate.g0} contestants={contestants}
+                      onNext={stage === "g0_eval" ? () => g0_revealNext(false) : stage === "g0_profes" ? g0_profesSalvan : g0_publicoVota}
+                      onRevealAll={() => g0_revealNext(true)} />
+                  ) : stage === "repechage" && repechage.state && viewGala === gala ? (
+                    <RepechageReveal state={repechage.state} contestants={contestants} favoriteId={gstate.favoritoId} onNext={repechage.advance} />
+                  ) : stage === "publicReveal" && gstate.publicReveal && viewGala === gala ? (
+                    <PublicReveal reveal={gstate.publicReveal} contestants={contestants} manual={manual}
+                      duelResult={summaries[gala]?.g12_14?.duel} onSelect={selectPublicIdentity} onNext={advancePublicReveal} />
+                  ) : stage === "scoreReveal" && gstate.scoreReveal && viewGala === gala ? (
+                    <ScoreReveal judges={academy.judges} reveal={gstate.scoreReveal} contestants={contestants}
+                      onNext={advanceScoreReveal} onRevealAll={() => applyScoreResults(gstate.scoreReveal.pending)} />
+                  ) : stage === "ceremony" && gstate.ceremony && viewGala === gala ? (
+                    <SaveCeremony ceremony={{ ...gstate.ceremony, tie: gstate.peerTie }} contestants={contestants}
+                      winnerId={gstate.ceremony.kind === "duel" ? (gstate.ceremony.source === "finalDuel" ? summaries[gala]?.g11?.winner : summaries[gala]?.duel?.winner)
+                        : gstate.ceremony.kind === "teachers" ? summaries[gala]?.profesorSalvoId : gstate.salvadoCompanerosId}
+                      onNext={advanceCeremony} onContinue={continueCeremony} onRevealAll={revealAllPeerVotes} />
+                  ) : stage === "votoPublico" && gstate.top3Shown && viewGala === gala ? (
+                    <FavoriteReveal state={gstate} contestants={contestants} />
+                  ) : stage === "juradoEvaluando" && viewGala === gala ? (
+                    <JuryEvaluation jury={gstate} contestants={contestants} performances={summaries[gala]?.performances} />
+                  ) : (
                   <div className="prose max-w-none">
                     {(galaLogs[viewGala]||[]).length===0? (
                       <p className="text-sm text-muted-foreground">Sin eventos en esta gala.</p>
                     ) : (
                       <ul className="list-disc pl-5 space-y-2">
-                        {(galaLogs[viewGala]||[]).map((l,i)=>(<li key={i} dangerouslySetInnerHTML={{__html:l}} />))}
+                        {(galaLogs[viewGala]||[]).map((l,i)=>(<li key={i} dangerouslySetInnerHTML={{__html:galaLog(l,repechageEnabled)}} />))}
                       </ul>
                     )}
                   </div>
+                  )}
                   {/* Ocultamos resultados de test (siguen ejecutándose internamente) */}
                     {false && testResults.length>0 && (
                       <div className="text-xs text-muted-foreground">
@@ -4299,10 +4338,15 @@ function gala10Profes() {
       )}
 
         {/* === Reparto de temas de la gala visible === */}
-        { summaries[viewGala]?.[viewGala]?.reparto && (
+        { !academyBlocked && summaries[viewGala]?.[viewGala]?.reparto && (
           <Card className="mt-6">
             <CardContent className="p-6 space-y-4">
-              <h3 className="text-lg font-semibold">Reparto de temas — Gala {viewGala}</h3>
+              <h3 className="text-lg font-semibold">Reparto de temas — Gala {shownGala(viewGala)}</h3>
+              {summaries[viewGala][viewGala].groupSong && (
+                <p className="rounded-lg bg-gray-100 px-4 py-3 text-sm">
+                  <strong>Actuación grupal:</strong> {summaries[viewGala][viewGala].groupSong}
+                </p>
+              )}
               <div className="overflow-auto">
                 <table className="min-w-full text-sm border-collapse">
                   <thead>
@@ -4330,9 +4374,9 @@ function gala10Profes() {
 
                         // Favorito del público: forzar etiqueta estándar y conservar porcentaje si vien
 
-                        // (opcional, si quieres mantener la normalización de Gala 11)
-                        // En G11, no normalizar si ya viene un "Salvad@ por el público (%) > Finalista"
-                        if (viewGala === 11 
+                        // (opcional, si quieres mantener la normalización de Gala 13)
+                        // En G13, no normalizar si ya viene un "Salvad@ por el público (%) > Finalista"
+                        if (viewGala === 13
                             && /(finalista|favorit|nómada)/i.test(valor) 
                             && !/salvad/i.test(valor)) {
                           displayValor = "Finalista";
@@ -4379,18 +4423,20 @@ function gala10Profes() {
 
 
 
-      {Object.keys(summaries).length>0 && (
+      {!academyBlocked && Object.keys(summaries).length>0 && (
         <Card>
           <CardContent className="p-6 space-y-2">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Recorrido del concurso</h2>
+              <h2 className="text-xl font-semibold">{showRelationships ? "Tabla de Relaciones" : showPopularity ? "Tabla de Popularidad" : "Recorrido del concurso"}</h2>
+              {seasonFinished && <Button variant="outline" onClick={() => { setShowRelationships(false); setShowPopularity(v => !v); }}>{showPopularity ? "Ver recorrido" : "Tabla de Popularidad"}</Button>}
+              {seasonFinished && <Button variant="outline" onClick={() => { setShowPopularity(false); setShowRelationships(v => !v); }}>{showRelationships ? "Ver recorrido" : "Tabla de Relaciones"}</Button>}
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="secondary" onClick={onDownloadRecorrido}>
                   ⬇️ Descargar tabla
                 </Button>
               </div>
             </div>
-            <RecorridoTable contestants={contestants} summaries={summaries} />
+            {showRelationships && seasonFinished ? <RelationshipsTable repechageEnabled={repechageEnabled} contestants={contestants} summaries={summaries} relations={academy.relationships} pairs={academy.pairs} /> : showPopularity && seasonFinished ? <PopularityTable repechageEnabled={repechageEnabled} contestants={contestants} summaries={summaries} /> : <RecorridoTable repechageEnabled={repechageEnabled} contestants={contestants} summaries={summaries} />}
           </CardContent>
         </Card>
       )}
@@ -4398,7 +4444,7 @@ function gala10Profes() {
   );
 }
 
-function RecorridoTable({ contestants, summaries }){
+function RecorridoTable({ contestants, summaries, repechageEnabled=true }){
 
   // --- Helpers de género (compactos y sin repeticiones) ---
   const sufLocal = g => (g==="m"?"o":g==="f"?"a":"e");               // sufijo por género
@@ -4429,14 +4475,14 @@ function RecorridoTable({ contestants, summaries }){
   // Acceso al género de un concursante por id
   const getGender = (id) => contestants.find(c => c.id === id)?.gender ?? "e";
 
-  const headers=["Concursante", "Gala 0", ...Array.from({length:15},(_,i)=> (i+1===15?"Gala Final":`Gala ${i+1}`))];
-  const cellStyle=(bg,color="#000")=>({ background:bg, color, padding:"4px 6px", border:"1px solid #ddd", fontSize:12, textAlign:"center", whiteSpace:"nowrap" });
-  const g15 = summaries[15]?.g15, winnerId=g15?.winner, thirdId=g15?.third, secondId=g15 ? [...g15.tabla].sort((a,b)=>b.pct-a.pct)[1]?.id : undefined;
+  const headers=["Concursante", "Gala 0", ...visibleGalas(17,repechageEnabled).slice(1).map(g=>g===17?"Gala Final":`Gala ${displayGala(g,repechageEnabled)}`)];
+  const cellStyle=(bg,color="#000")=>({ background:bg, color, padding:"0px 6px", border:"1px solid #ddd", fontSize:12, textAlign:"center", whiteSpace:"nowrap" });
+  const g15 = summaries[17]?.g15, winnerId=g15?.winner, thirdId=g15?.third, secondId=g15 ? [...g15.tabla].sort((a,b)=>b.pct-a.pct)[1]?.id : undefined;
   const eliminatedOnly = contestants
     .filter(c => c.status === "eliminado")
     .sort((a,b) => {
-      const ga = a.history.find(h => h.evento?.startsWith?.("Eliminado"))?.gala ?? 0;
-      const gb = b.history.find(h => h.evento?.startsWith?.("Eliminado"))?.gala ?? 0;
+      const ga = lastElimination(a);
+      const gb = lastElimination(b);
       return gb - ga; // 👈 se mantiene “como siempre”
     });
   const aliveOnly = contestants
@@ -4459,8 +4505,8 @@ function RecorridoTable({ contestants, summaries }){
     }
 
   const rows = sorted.map(c=>{
-    const cells=[{text:c.name, style:cellStyle("#fff","#111") }];
-    const elimGala = c.history.find(h => h.evento?.startsWith?.("Eliminado"))?.gala ?? null;
+    const cells=[{text:<TablePerson person={c} />, style:{...cellStyle("#fff","#111"),padding:0} }];
+    const eliminationGalas = c.history.filter(h => h.evento?.startsWith?.("Eliminado")).map(h=>h.gala);
 
     // 🎬 Gala 0
     const g0 = summaries[0]?.gala0;
@@ -4483,14 +4529,17 @@ function RecorridoTable({ contestants, summaries }){
     }
 
 
-    for(let g=1; g<=15; g++){
+    for(const g of visibleGalas(17,repechageEnabled).slice(1)){
       let text="—", style=cellStyle("#eee","#555");
-      if (elimGala !== null && g > elimGala) { cells.push({ text: "—", style: cellStyle("#ccc", "#666") }); continue; }
+      const elimGala = eliminationGalas.includes(g) ? g : null;
+      const special = repechageCell(c,summaries,g);
+      if (special) { cells.push({text:special.split ? <span style={{display:"grid",gridTemplateColumns:"1fr 1fr"}}><span style={{color:"white"}}>Eli.</span><span>Can.</span></span> : special.text,style:{...cellStyle(special.background,special.color || '#111'),...(special.split ? {background:'linear-gradient(to right, red 0%, red 50%, #fff3a6 50%, #fff3a6 100%)'} : {})}}); continue; }
+      if (absentAfterElimination(c,summaries,g)) { cells.push({ text: "—", style: cellStyle("#ccc", "#666") }); continue; }
       if (elimGala !== null && g === elimGala) {
         const gnd = getGender(c.id);
-        if (g >= 12 && g <= 14) {
-          // 6º (G12) · 5º (G13) · 4º (G14) — “º” si es él, “ª” si es ella o elle
-          const n   = g === 12 ? "6" : g === 13 ? "5" : "4";
+        if (g >= 14 && g <= 16) {
+          // 6º (G14) · 5º (G15) · 4º (G16) — “º” si es él, “ª” si es ella o elle
+          const n   = g === 14 ? "6" : g === 15 ? "5" : "4";
           const suf = gnd === "m" ? "º" : "ª";
           cells.push({ text: `${n}${suf} Finalista`, style: cellStyle("sienna", "#fff") });
         } else {
@@ -4501,7 +4550,7 @@ function RecorridoTable({ contestants, summaries }){
 
       const s=summaries[g]; if(!s){ cells.push({text,style}); continue; }
 
-      if (g <= 9) {
+      if (g <= 11) {
         // ✅ Lee Top-3 desde summaries
         const top3Ids  = s.top3Ids || [];
         const inTop3   = top3Ids.includes(c.id);
@@ -4562,7 +4611,7 @@ function RecorridoTable({ contestants, summaries }){
         }
       }
 
-      else if (g === 10) {
+      else if (g === 12) {
         const g10 = s.g10;
         if (g10?.sumas) {
           const sum = g10.sumas[c.id];
@@ -4583,7 +4632,7 @@ function RecorridoTable({ contestants, summaries }){
         }
       }
 
-      else if (g === 11) {
+      else if (g === 13) {
         const g11 = s.g11;
         if (g11) {
           const gnd = getGender(c.id);
@@ -4602,7 +4651,7 @@ function RecorridoTable({ contestants, summaries }){
         }
       }
 
-      else if (g >= 12 && g <= 14) {
+      else if (g >= 14 && g <= 16) {
         const gX = s.g12_14;
         if (gX) {
           const d   = gX.duel;                         // { low, high, pctWin, pctLose, winner }
@@ -4610,8 +4659,8 @@ function RecorridoTable({ contestants, summaries }){
           const loserId = d.winner === d.low ? d.high : d.low;
 
           if (c.id === loserId) {
-            // 6º (G12) · 5º (G13) · 4º (G14) — “º” si es él, “ª” si es ella o elle
-            const n    = g === 12 ? "6" : g === 13 ? "5" : "4";
+            // 6º (G14) · 5º (G15) · 4º (G16) — “º” si es él, “ª” si es ella o elle
+            const n    = g === 14 ? "6" : g === 15 ? "5" : "4";
             const suf  = gnd === "m" ? "º" : "ª";
             text  = `${n}${suf} Finalista`;
             style = cellStyle("sienna", "#fff");
@@ -4629,7 +4678,7 @@ function RecorridoTable({ contestants, summaries }){
 
 
 
-      else if (g === 15) {
+      else if (g === 17) {
         const gX = s.g15;
         if (gX) {
           const gnd = getGender(c.id);
@@ -4666,6 +4715,7 @@ function RecorridoTable({ contestants, summaries }){
               <tr>
                 {headers.map((h, i) => (
                   <th
+                    colSpan={i===0 ? 2 : 1}
                     key={i}
                     style={{
                       position: "sticky", // luego lo desactivamos temporalmente
@@ -4684,7 +4734,7 @@ function RecorridoTable({ contestants, summaries }){
             <tbody>
               {rows.map((cells, ri) => (
                 <tr key={ri}>
-                  {cells.map((c, ci) => (
+                  {cells.map((c, ci) => ci===0 ? <TablePerson key={ci} person={sorted[ri]} /> : (
                     <td key={ci} style={c.style}>
                       {c.text}
                     </td>

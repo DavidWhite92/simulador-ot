@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
+import { readCustomPhoto } from "../lib/customPhoto";
 
 // ======================= UTILS ========================
 const slugify = (s) =>
@@ -82,12 +83,17 @@ const clamp15 = (n) => Math.max(0, Math.min(15, Number(n) || 0));
 // ======================= COMPONENTE ====================
 export default function OTRosterPicker({
   max = 18,
-  onImport,
-  onCancel,
+  roster,
+  onChange,
+  onStart,
   title = "Elige concursantes de OT",
 }) {
   const [pool, setPool] = useState([]); // catálogo del JSON + customs
-  const [sel, setSel] = useState([]); // ids seleccionados
+  const sel = roster.map(p => String(p.id));
+  const setSel = (update) => {
+    const ids = typeof update === "function" ? update(sel) : update;
+    onChange(ids.map(id => pool.find(p => String(p.id) === id) || roster.find(p => String(p.id) === id)).filter(Boolean));
+  };
   const [q, setQ] = useState(""); // búsqueda
 
   // Creador custom
@@ -99,6 +105,7 @@ export default function OTRosterPicker({
     stats: { afinacion: 0, baile: 0, presencia: 0, emocion: 0 },
   });
   const [error, setError] = useState("");
+  const [photoLoading, setPhotoLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
 
@@ -150,7 +157,7 @@ export default function OTRosterPicker({
   }, []);
 
   // Índices útiles
-  const byId = useMemo(() => new Map(pool.map((p) => [String(p.id), p])), [pool]);
+
 
   // Selección
   const toggle = (id) => {
@@ -160,10 +167,7 @@ export default function OTRosterPicker({
     );
   };
 
-  const selected = useMemo(
-    () => sel.map((id) => byId.get(String(id))).filter(Boolean),
-    [sel, byId]
-  );
+  const selected = roster;
 
   // --- Selección aleatoria ---
   const handleRandomPick = () => {
@@ -205,7 +209,31 @@ export default function OTRosterPicker({
   }, [pool]);
 
   // ======== CREACIÓN CUSTOM =========
-  const updateForm = (patch) => setForm((f) => ({ ...f, ...patch }));
+  const updateForm = (patch) => {
+    setError("");
+    setForm((f) => ({ ...f, ...patch }));
+  };
+  const uploadPhoto = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setError("");
+    setPhotoLoading(true);
+    try {
+      const photo = await readCustomPhoto(file);
+      setForm(f => ({ ...f, photo }));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPhotoLoading(false);
+    }
+  };
+  const randomizeStats = () => {
+    setStatErrors({});
+    setForm(f => ({ ...f, stats: Object.fromEntries(
+      Object.keys(f.stats).map(key => [key, Math.floor(Math.random() * 16)])
+    ) }));
+  };
   //const updateStat = (k, v) =>
   //  setForm((f) => ({
    //   ...f,
@@ -247,8 +275,9 @@ export default function OTRosterPicker({
       const photoInput = form.photo.trim();
       const photo = photoInput === "" ? "/ot_photos/sinfoto.gif" : photoInput;
       if (!name) return setError("Pon un nombre.");
-      if (photoInput && !/(https?:\/\/|\/).+\.(png|gif|jpe?g)$/i.test(photoInput))
-        return setError("La foto debe ser un enlace que acabe en .png, .jpg, .jpeg o .gif.");
+      if (photoLoading) return;
+      if (photoInput && !/^(https?:\/\/|\/(?!\/)|data:image\/(webp|png|jpeg);base64,)/i.test(photoInput))
+        return setError("Introduce un enlace de imagen válido o sube una imagen desde tu dispositivo.");
 
       const base = {
         name,
@@ -265,10 +294,12 @@ export default function OTRosterPicker({
       };
 
       let entry;
+      try {
       if (editingId) {
         // EDITAR
         entry = { ...base, id: editingId };
         upsertCustom(entry);
+        onChange(roster.map(p => p.id === entry.id ? withDefaults(entry, 0) : p));
         setPool((p) =>
           p.map((c) => (c.id === editingId ? withDefaults(entry, 0) : c))
         );
@@ -280,6 +311,9 @@ export default function OTRosterPicker({
         setPool((p) => [...p, withDefaults(entry, p.length + 1)]);
       }
 
+      } catch {
+        return setError("No se pudo guardar: el almacenamiento del navegador está lleno o no está disponible. Borra algún concursante custom o prueba con otra foto.");
+      }
       setShowCreator(false);
       setEditingId(null);
       setForm({
@@ -293,7 +327,7 @@ export default function OTRosterPicker({
 
   // ======================== UI =========================
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-5">
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-5">
       {/* CABECERA */}
       <div className="flex items-center justify-between">
         <div className="space-y-1">
@@ -302,17 +336,161 @@ export default function OTRosterPicker({
             Seleccionados: <b>{sel.length}</b> / {max}
           </p>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={onCancel}>← Volver</Button>
-          <Button onClick={() => onImport?.(selected)} disabled={sel.length === 0}>
-            Usar estos {sel.length}/{max}
-          </Button>
-          <Button variant="secondary" onClick={() => setShowCreator((v) => !v)}>
-            {showCreator ? "Cerrar creador" : "Crea tu concursante de OT"}
-          </Button>
-        </div>
       </div>
 
+    {/* BUSCADOR */}
+    <div className="space-y-3">
+      {/* Input + botón "Elige al azar" */}
+      <div className="flex gap-2">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          id="roster-search"
+          aria-label="Buscar concursantes"
+          placeholder="Buscar concursantes… (ej: David, Verónica, Sandra)"
+          className="min-w-0 flex-1 h-10 rounded-md border px-3 text-sm bg-white"
+        />
+        <Button type="button" onClick={handleRandomPick}>
+          Elige al azar
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button onClick={onStart}>▶️ Iniciar</Button>
+        <Button variant="outline" onClick={() => onChange([])}>Limpiar lista</Button>
+        <span className="text-sm text-gray-600" aria-live="polite">{sel.length} / {max} seleccionados</span>
+      </div>
+      {selected.length === 0 && <p className="rounded-lg border border-dashed p-4 text-sm text-gray-500">Busca o abre una edición para seleccionar a tus 18 concursantes.</p>}
+      {/* Seleccionados (chips con foto) */}
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {selected.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => toggle(p.id)}
+              className="flex items-center gap-2 rounded-md border bg-white px-2 py-1 shadow-sm hover:shadow focus:outline-none"
+              title="Quitar de la selección"
+            >
+              <img
+                src={p.photo}
+                alt={p.name}
+                className="w-7 h-7 object-cover rounded"
+              />
+              <span className="text-sm">{p.name}</span>
+              <Badge>✕</Badge>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* RESULTADOS DE BÚSQUEDA */}
+      {nQ && (
+        <div className="rounded-lg border bg-muted/40 p-3">
+          <div className="mb-2 text-sm font-medium">
+            {matches.length > 0 ? `Coincidencias (${matches.length})` : "Sin coincidencias"}
+          </div>
+          {matches.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {matches.map((p) => {
+                const active = sel.includes(String(p.id));
+                return (
+                  <div key={p.id} className="rounded-lg border bg-white shadow-sm overflow-hidden">
+                    <button
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => toggle(p.id)}
+                      className={`w-full text-left cursor-pointer block focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                        active ? "ring-2 ring-primary" : ""
+                      }`}
+                      title={`${p.name} (${p.isCustom ? "Custom" : p.edition})`}
+                    >
+                      <CardContent className="p-2 text-center">
+                        <div className="flex flex-col items-center">
+                          <img
+                            src={p.photo}
+                            alt={p.name}
+                            className="w-[62px] h-[62px] object-cover rounded-md mb-1"
+                          />
+                          <div className="text-sm font-medium truncate">{p.name}</div>
+                          <div className="text-[11px] opacity-70">{p.isCustom ? "Custom" : p.edition}</div>
+                          {active && <Badge className="mt-1">✓</Badge>}
+                        </div>
+                      </CardContent>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+
+
+      {/* LISTA AGRUPADA POR EDICIÓN (acordeón simple con <details>) */}
+      <div className="space-y-2">
+        {editions.keys.map((ed) => (
+          <details key={ed} className="border rounded-lg bg-white/70">
+            <summary className="px-4 py-3 cursor-pointer select-none font-medium bg-white">{ed}</summary>
+            <div className="px-3 pb-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {editions.map.get(ed).map((p) => {
+                  const active = sel.includes(String(p.id));
+                  return (
+                    <div key={p.id} className="rounded-lg border bg-white shadow-sm overflow-hidden">
+                      {/* Botón que selecciona/deselecciona la tarjeta */}
+                      <button
+                        type="button"
+                        aria-pressed={active}
+                      onClick={() => toggle(p.id)}
+                        className={`w-full text-left cursor-pointer block focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                          active ? "ring-2 ring-primary" : ""
+                        }`}
+                        title={p.name}
+                      >
+                        <CardContent className="p-2 text-center">
+                          <div className="flex flex-col items-center">
+                            <img src={p.photo} alt={p.name} className="w-[62px] h-[62px] object-cover rounded-md mb-1" />
+                            <div className="text-sm font-medium truncate">{p.name}</div>
+                            {active && <Badge className="mt-1">✓</Badge>}
+                          </div>
+                        </CardContent>
+                      </button>
+
+                      {/* Controles fuera del <button> para evitar nesting */}
+                      {p.isCustom && (
+                        <div className="flex justify-center gap-2 pb-2">
+                          <Button
+                            variant="outline"
+                            className="h-7 px-2 text-xs"
+                            onClick={(e) => { e.stopPropagation(); startEdit(p); }}
+                          >
+                            Editar
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            className="h-7 px-2 text-xs"
+                            onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
+                          >
+                            Borrar
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </details>
+        ))}
+      </div>
+      <div className="border-t pt-5">
+        <Button variant="secondary" onClick={() => setShowCreator(v => !v)}>
+          {showCreator ? "Cerrar creador" : "Crea tu concursante de OT"}
+        </Button>
+        <p className="mt-2 text-sm text-gray-600">Personaliza su nombre, foto, género y estadísticas. Lo encontrarás en la categoría Custom.</p>
+      </div>
       {/* PANEL DE CREACIÓN CUSTOM */}
       {showCreator && (
         <Card className="border-2">
@@ -329,14 +507,29 @@ export default function OTRosterPicker({
                 />
 
                 <label className="block text-sm font-medium">
-                  Foto (opcional; URL terminada en .png, .jpg, .jpeg o .gif)
+                  Foto (opcional): enlace de imagen
                 </label>
                 <input
-                  value={form.photo}
+                  value={form.photo.startsWith("data:") ? "" : form.photo}
+                  disabled={photoLoading}
                   onChange={(e) => updateForm({ photo: e.target.value })}
                   className="w-full h-10 rounded-md border px-3 text-sm"
                   placeholder="https://.../mi-foto.png"
                 />
+                <label className="block text-sm font-medium" htmlFor="custom-photo-file">O subir desde tu dispositivo</label>
+                <input id="custom-photo-file" type="file" accept="image/*" onChange={uploadPhoto}
+                  disabled={photoLoading} className="block w-full text-sm" aria-describedby="custom-photo-help" />
+                <p id="custom-photo-help" className="text-xs text-gray-500">
+                  Máximo 5 MB. Puedes elegir cualquier formato de imagen compatible con tu navegador.
+                  Se verá mejor si es cuadrada. Se guardará una versión reducida y estática en este navegador.
+                </p>
+                {photoLoading && <p role="status" className="text-sm">Preparando imagen…</p>}
+                {form.photo && (
+                  <div className="flex items-center gap-3">
+                    <img src={form.photo} alt="Vista previa del concursante" className="h-[62px] w-[62px] rounded-lg object-cover" />
+                    <Button variant="outline" disabled={photoLoading} onClick={() => updateForm({ photo: "" })}>Quitar foto</Button>
+                  </div>
+                )}
 
                 <label className="block text-sm font-medium">Género</label>
                 <select
@@ -353,7 +546,7 @@ export default function OTRosterPicker({
                   <Button
                     onClick={validateAndSave}
                     disabled={
-                      !!error ||
+                      photoLoading ||
                       Object.values(statErrors).some(Boolean)
                     }
                   >
@@ -373,7 +566,10 @@ export default function OTRosterPicker({
 
               {/* Columna derecha: stats + preview */}
               <div className="space-y-3">
-                <label className="block text-sm font-medium">Estadísticas (0–15)</label>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-medium">Estadísticas (0–15)</span>
+                  <Button variant="outline" onClick={randomizeStats}>🎲 Random</Button>
+                </div>
 
                 {(() => {
                   const STAT_FIELDS = [
@@ -419,143 +615,6 @@ export default function OTRosterPicker({
         </Card>
       )}
 
-    {/* BUSCADOR */}
-    <div className="space-y-3">
-      {/* Input + botón "Elige al azar" */}
-      <div className="flex gap-2">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar concursantes… (ej: David, Verónica, Sandra)"
-          className="flex-1 h-10 rounded-md border px-3 text-sm bg-white"
-        />
-        <Button type="button" onClick={handleRandomPick}>
-          Elige al azar
-        </Button>
-      </div>
-
-      {/* Seleccionados (chips con foto) */}
-      {selected.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {selected.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => toggle(p.id)}
-              className="flex items-center gap-2 rounded-md border bg-white px-2 py-1 shadow-sm hover:shadow focus:outline-none"
-              title="Quitar de la selección"
-            >
-              <img
-                src={p.photo}
-                alt={p.name}
-                className="w-7 h-7 object-cover rounded"
-              />
-              <span className="text-sm">{p.name}</span>
-              <Badge>✕</Badge>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* RESULTADOS DE BÚSQUEDA */}
-      {nQ && (
-        <div className="rounded-lg border bg-muted/40 p-3">
-          <div className="mb-2 text-sm font-medium">
-            {matches.length > 0 ? `Coincidencias (${matches.length})` : "Sin coincidencias"}
-          </div>
-          {matches.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {matches.map((p) => {
-                const active = sel.includes(String(p.id));
-                return (
-                  <div key={p.id} className="rounded-lg border bg-white shadow-sm overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => toggle(p.id)}
-                      className={`w-full text-left cursor-pointer block focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-                        active ? "ring-2 ring-primary" : ""
-                      }`}
-                      title={`${p.name} (${p.isCustom ? "Custom" : p.edition})`}
-                    >
-                      <CardContent className="p-2 text-center">
-                        <div className="flex flex-col items-center">
-                          <img
-                            src={p.photo}
-                            alt={p.name}
-                            className="w-[70px] h-[70px] object-cover rounded-md mb-1"
-                          />
-                          <div className="text-sm font-medium truncate">{p.name}</div>
-                          <div className="text-[11px] opacity-70">{p.isCustom ? "Custom" : p.edition}</div>
-                          {active && <Badge className="mt-1">✓</Badge>}
-                        </div>
-                      </CardContent>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-
-
-      {/* LISTA AGRUPADA POR EDICIÓN (acordeón simple con <details>) */}
-      <div className="space-y-2">
-        {editions.keys.map((ed) => (
-          <details key={ed} className="border rounded-lg bg-white/70">
-            <summary className="px-4 py-3 cursor-pointer select-none font-medium bg-white">{ed}</summary>
-            <div className="px-3 pb-4">
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                {editions.map.get(ed).map((p) => {
-                  const active = sel.includes(String(p.id));
-                  return (
-                    <div key={p.id} className="rounded-lg border bg-white shadow-sm overflow-hidden">
-                      {/* Botón que selecciona/deselecciona la tarjeta */}
-                      <button
-                        type="button"
-                        onClick={() => toggle(p.id)}
-                        className={`w-full text-left cursor-pointer block focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-                          active ? "ring-2 ring-primary" : ""
-                        }`}
-                        title={p.name}
-                      >
-                        <CardContent className="p-2 text-center">
-                          <div className="flex flex-col items-center">
-                            <img src={p.photo} alt={p.name} className="w-[62px] h-[62px] object-cover rounded-md mb-1" />
-                            <div className="text-sm font-medium truncate">{p.name}</div>
-                            {active && <Badge className="mt-1">✓</Badge>}
-                          </div>
-                        </CardContent>
-                      </button>
-
-                      {/* Controles fuera del <button> para evitar nesting */}
-                      {p.isCustom && (
-                        <div className="flex justify-center gap-2 pb-2">
-                          <Button
-                            variant="outline"
-                            className="h-7 px-2 text-xs"
-                            onClick={(e) => { e.stopPropagation(); startEdit(p); }}
-                          >
-                            Editar
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            className="h-7 px-2 text-xs"
-                            onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
-                          >
-                            Borrar
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </details>
-        ))}
-      </div>
     </div>
   );
 }
