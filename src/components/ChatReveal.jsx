@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 export default function ChatReveal({ chat, contestants, gala, onNext, onSkip }) {
   const reduced = useReducedMotion();
   const event = chat.events[chat.shown - 1];
-  return <section className="mx-auto max-w-4xl space-y-5 rounded-2xl border bg-white p-6" aria-live="polite">
+  return <section className="mx-auto max-w-4xl space-y-5 rounded-2xl border bg-white p-2 sm:p-6" aria-live="polite">
     <p className="text-sm text-gray-500">Después de la Gala {gala}</p><h2 className="text-2xl font-bold">El Chat</h2>
     <Motion.div key={chat.shown} initial={{ opacity: 0, y: reduced ? 0 : 20 }} animate={{ opacity: 1, y: 0 }} className="min-h-60 space-y-5 text-center">
       {event ? <><p className="text-sm text-gray-500">Momento {chat.shown} de {chat.events.length}</p>

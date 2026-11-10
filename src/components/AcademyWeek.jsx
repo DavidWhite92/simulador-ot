@@ -2,7 +2,7 @@ import { motion as Motion, useReducedMotion } from 'framer-motion';
 import { Button } from './ui/button';
 
 export function JudgeSetup({ judges, onChange }) {
-  return <section className="rounded-xl border bg-white p-5 space-y-3">
+  return <section className="rounded-xl border bg-white p-2 sm:p-5 space-y-3">
     <h2 className="text-xl font-semibold">Elige los cuatro jueces</h2>
     <p className="text-sm text-gray-600">Puedes escribir sus nombres o dejar Juez 1, Juez 2, Juez 3 y Juez 4.</p>
     <div className="grid gap-3 sm:grid-cols-2">{judges.map((name,i) => <label key={i} className="text-sm">Juez {i+1}
@@ -23,7 +23,7 @@ export default function AcademyWeek({ week, reparto, groupSong, contestants, gal
   const blockEvents = (week?.events || []).filter(item => eventBlock(item) === block);
   const blockShown = (week?.events || []).slice(0,week?.shown || 0).filter(item => eventBlock(item) === block).length;
 
-  return <section className="mx-auto w-full max-w-4xl space-y-5 rounded-2xl border bg-white p-6" aria-live="polite">
+  return <section className="mx-auto w-full max-w-4xl space-y-5 rounded-2xl border bg-white p-2 sm:p-6" aria-live="polite">
     <div><p className="text-sm text-gray-500">Gala {gala}</p><h2 className="text-2xl font-bold">{performing ? 'Comienzan las actuaciones' : gala === 0 ? 'Gala de entrada' : event ? `Academia 24h · ${block}` : 'Academia 24h'}</h2></div>
     {!week ? <>
       <h3 className="text-lg font-semibold">Reparto de temas</h3>

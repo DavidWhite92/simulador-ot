@@ -18,7 +18,7 @@ export default function GalaZeroReveal({ stage, reveal, state, contestants, perf
   const publicRows = outcome?.public?.tabla || [];
   const winnerPct = publicRows.find(row => String(row.id) === String(winner))?.pct;
   const last = jury && reveal && reveal.index === reveal.events.length - 1;
-  return <section aria-live="polite" aria-label="Gala 0: entrada en la Academia" className="overflow-hidden rounded-xl border bg-white p-5 text-center">
+  return <section aria-live="polite" aria-label="Gala 0: entrada en la Academia" className="overflow-hidden rounded-xl border bg-white p-2 sm:p-5 text-center">
     <h3 className="mb-4 text-lg font-semibold">{jury ? "Gala 0 · La decisión del jurado" : teachers ? "Los profesores han tomado una decisión…" : "La audiencia ha decidido quién entra en la Academia…"}</h3>
     {!jury && <div className="mb-5 flex flex-wrap justify-center gap-4">{Array.from(state?.doubt || []).map(id => <div key={id} className="w-24 space-y-2">{photo(id, true)}<p className="text-sm">{person(id)?.name}</p></div>)}</div>}
     <Motion.div key={jury ? `${event?.id || "intro"}-${reveal?.phase}` : reveal?.phase || "intro"}

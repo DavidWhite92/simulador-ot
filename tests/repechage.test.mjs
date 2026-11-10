@@ -49,8 +49,8 @@ test('repechage cells preserve elimination and return history',()=>{
   assert.equal(repechageCell({id:'b',gender:'m'},summaries,9).text,'Eliminado');
   assert.equal(repechageCell(c,{8:{falseNominees:['a'],top3Ids:['a']}},8).text,'Salvadaº');
 });
-test('friendship starts at 80 and couples override it in pink',()=>{
-  assert.equal(relationshipColor(79),'white'); assert.equal(relationshipColor(80),'#dcfce7');
+test('friendship starts at 55 and couples override it in pink',()=>{
+  assert.equal(relationshipColor(54),'white'); assert.equal(relationshipColor(55),'#dcfce7');
   assert.equal(relationshipColor(40,true),'#f9a8d4');
   const old=[['a','b']], next=updatePairs(old,{breakup:['b','a']});
   assert.equal(next.length,0); assert.equal(old.length,1);

@@ -25,7 +25,7 @@ export default function PublicReveal({ reveal, contestants, manual, duelResult, 
         </table>
         {kind === "final" && phase === 1 && <p className="mt-2 text-xs text-red-700">El cuarto y el quinto no pasan a la fase 2.</p>}
       </div>
-      <div aria-live="polite" className="flex min-h-80 flex-col items-center justify-center overflow-hidden rounded-xl border bg-white p-5 text-center">
+      <div aria-live="polite" className="flex min-h-80 flex-col items-center justify-center overflow-hidden rounded-xl border bg-white p-2 sm:p-5 text-center">
         <motion.div key={`${screen}-${cursor}`} initial={{ opacity: 0, y: reduced ? 0 : 20 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-4">
           {screen === "announce" && <><p>{kind === "duel" ? "Vamos a revelar el" : target === 0 ? "La audiencia ha decidido que el ganador o ganadora, con un…" : `Vamos a revelar el ${target + 1}.º puesto, con un…`}</p><p className="text-4xl font-bold">{row.pct.toFixed(2)}%</p></>}
           {screen === "revealed" && <>{photo(row.id)}<p className="text-xl font-bold">{person(row.id)?.name}</p><p className="text-3xl font-bold">{row.pct.toFixed(2)}%</p>{kind === "final" && <p>{target === 0 ? "¡Ganador/a del simulador!" : `${target + 1}.º finalista`}</p>}</>}

@@ -22,7 +22,7 @@ export default function ScoreReveal({ reveal, contestants, judges = [], onNext, 
         </table>
         <p className="mt-2 text-xs text-gray-500">{complete ? "Puntuaciones completas" : "Clasificación provisional"}. Verde: tres primeros. Rojo: resto de concursantes.</p>
       </div>
-      <div aria-live="polite" className="flex min-h-80 flex-col items-center justify-center overflow-hidden rounded-xl border bg-white p-5 text-center">
+      <div aria-live="polite" className="flex min-h-80 flex-col items-center justify-center overflow-hidden rounded-xl border bg-white p-2 sm:p-5 text-center">
         {finalist ? <Motion.div key={`finalist-${finalist}`} initial={{ opacity: 0, x: reduced ? 0 : 50 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
           <p className="text-lg font-semibold text-green-700">{reveal.revealedFinalists}.º finalista por el jurado</p>
           <img src={person(finalist)?.photo || "/ot_photos/sinfoto.gif"} alt={person(finalist)?.name} className="mx-auto h-[62px] w-[62px] rounded-xl object-cover" />

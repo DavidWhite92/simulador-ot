@@ -1,8 +1,9 @@
+import { Button } from "./ui/button";
 import { useMusicCue } from "../lib/audio";
 import { AnimatePresence, motion as Motion, useReducedMotion } from "framer-motion";
 import JuryCatwalk from './JuryCatwalk';
 
-export default function JuryEvaluation({ jury, contestants, performances = {} }) {
+export default function JuryEvaluation({ jury, contestants, performances = {}, onNext, onRevealAll }) {
   const reduceMotion = useReducedMotion();
   const latest = jury.evalResults?.at(-1);
   const id = jury.currentEvaluadoId || latest?.id;
@@ -12,7 +13,7 @@ export default function JuryEvaluation({ jury, contestants, performances = {} })
   useMusicCue(result ? result === "nominado" ? "nominee" : "victory" : null, id);
   const suffix = contestant?.gender === "m" ? "o" : contestant?.gender === "f" ? "a" : "e";
   return (
-    <section aria-label="Valoración del jurado" aria-live="polite" className="overflow-hidden rounded-xl border bg-white p-5">
+    <section aria-label="Valoración del jurado" aria-live="polite" className="overflow-hidden rounded-xl border bg-white p-2 sm:p-5">
       <p className="mb-3 text-sm text-gray-500">Valoraciones reveladas: {jury.evalResults?.length || 0}</p>
       <AnimatePresence mode="wait" initial={false}>
         <Motion.div key={id || "waiting"}
@@ -34,6 +35,7 @@ export default function JuryEvaluation({ jury, contestants, performances = {} })
       </AnimatePresence>
       <JuryCatwalk contestants={contestants} ids={contestants.filter(c => c.status === 'active').map(c => c.id)}
         results={jury.evalResults || []} favoriteId={jury.favoritoId} currentId={jury.currentEvaluadoId} />
+      <div className="mt-4 flex flex-wrap justify-center gap-2"><Button onClick={onNext}>Siguiente</Button><Button variant="outline" onClick={onRevealAll}>Revelar todo</Button></div>
     </section>
   );
 }

@@ -410,7 +410,7 @@ test('collective household moments include large groups and affect only their pa
       const updated=applyPopularity(cast,Object.fromEntries(event.ids.map(id=>[id,event.delta])));
       for(const c of updated.filter(c=>c.id!=='out')) assert.equal(c.popularity,50+(event.ids.includes(c.id)?event.delta:0));
       const relations=eventRelationships({},event,cast);
-      assert.equal(relationshipOf(relations,event.ids[0],event.ids[1]),event.delta>0?53:46);
+      assert.equal(relationshipOf(relations,event.ids[0],event.ids[1]),event.delta>0 ? 53+Math.abs(event.delta) : 44-Math.abs(event.delta));
     }
   }
   assert.ok([...sizes].some(n=>n>=5));

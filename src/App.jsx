@@ -26,7 +26,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-white/60">
       <MusicControl />
-      <div className="w-full px-6 lg:px-12">
+      <div className="w-full min-w-0 px-1 sm:px-6 lg:px-12">
         {mode === "telecinco" ? (
           <SimuladorOT {...shared} />
         ) : (

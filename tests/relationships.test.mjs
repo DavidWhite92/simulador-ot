@@ -7,30 +7,30 @@ test('relationships start at 50, are symmetric and preserve historical snapshots
   const initial={};
   assert.equal(relationshipOf(initial,'a','b'),50);
   const next=eventRelationships(initial,{ids:['a','b'],delta:5,kind:'rehearsal'},people);
-  assert.equal(relationshipOf(next,'a','b'),53);
-  assert.equal(relationshipOf(next,'b','a'),53);
+  assert.equal(relationshipOf(next,'a','b'),58);
+  assert.equal(relationshipOf(next,'b','a'),58);
   assert.deepEqual(initial,{});
   assert.equal(relationshipOf(next,'a','c'),50);
   assert.equal(relationshipOf(next,'a','a'),null);
   const saved=JSON.parse(JSON.stringify(next));
   const final=eventRelationships(next,{ids:['a','b'],delta:-4,kind:'mic'},people);
-  assert.equal(relationshipOf(final,'a','b'),49);
-  assert.equal(relationshipOf(saved,'a','b'),53);
+  assert.equal(relationshipOf(final,'a','b'),48);
+  assert.equal(relationshipOf(saved,'a','b'),58);
 });
 test('working together rewards every pair in a trio only if they have not clashed',()=>{
   const reparto=[{members:['a','b','c']},{members:['a','b']}];
   const friction=[{ids:['a','b'],delta:-4}];
   const result=rehearsalRelationships({},reparto,friction);
   assert.equal(relationshipOf(result,'a','b'),50);
-  assert.equal(relationshipOf(result,'a','c'),54);
-  assert.equal(relationshipOf(result,'b','c'),54);
-  assert.equal(relationshipOf(rehearsalRelationships({},reparto,[]),'a','b'),54);
+  assert.equal(relationshipOf(result,'a','c'),56);
+  assert.equal(relationshipOf(result,'b','c'),56);
+  assert.equal(relationshipOf(rehearsalRelationships({},reparto,[]),'a','b'),56);
 });
 test('romance and shared performances strengthen relationships within limits',()=>{
   const romantic=eventRelationships({},{ids:['a','b'],pair:['a','b'],delta:3},people);
-  assert.equal(relationshipOf(romantic,'a','b'),62);
+  assert.equal(relationshipOf(romantic,'a','b'),68);
   const good=performanceRelationships(romantic,{members:[{id:'a',score:8},{id:'b',score:7}]});
-  assert.equal(relationshipOf(good,'a','b'),64);
+  assert.equal(relationshipOf(good,'a','b'),71);
   const capped=eventRelationships({[relationKey('a','b')]:99},{ids:['a','b'],pair:['a','b'],delta:3},people);
   assert.equal(relationshipOf(capped,'a','b'),100);
   const low=eventRelationships({[relationKey('a','b')]:1},{ids:['a','b'],delta:-5},people);
@@ -38,9 +38,9 @@ test('romance and shared performances strengthen relationships within limits',()
 });
 test('household events and Chat affect trust without involving eliminated contestants',()=>{
   const result=eventRelationships({},{ids:['a'],kind:'solo',delta:-5},[...people,{id:'gone',status:'eliminado'}]);
-  assert.equal(relationshipOf(result,'a','b'),49);
+  assert.equal(relationshipOf(result,'a','b'),47);
   assert.equal(relationshipOf(result,'a','gone'),50);
-  assert.equal(relationshipOf(eventRelationships(result,{ids:['a'],delta:1},people,true),'a','b'),50);
+  assert.equal(relationshipOf(eventRelationships(result,{ids:['a'],delta:1},people,true),'a','b'),49);
 });
 test('peer votes prioritize romance, exceptional friendship and then songmates',()=>{
   const settings={voterId:'a',candidates:['b','c','d'],reparto:[{members:['a','b']}],relations:{[relationKey('a','c')]:89}};

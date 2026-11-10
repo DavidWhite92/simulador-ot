@@ -11,11 +11,12 @@ export function eventRelationships(relations, event, contestants, chat=false) {
   if (event.kind === 'compassion') return next;
   const ids=event.ids || [];
   if (ids.length>1) {
-    const delta=event.pair ? 12 : event.delta>0 ? 3 : -4;
+    const strength=Math.min(7,Math.max(1,Math.abs(event.delta || 1)));
+    const delta=event.breakup ? -18 : event.pair ? 18 : event.delta>0 ? 3+strength : -(6+strength);
     for(let i=0;i<ids.length;i++) for(let j=i+1;j<ids.length;j++) adjust(next,ids[i],ids[j],delta);
   } else if (ids.length===1 && (chat || event.kind==='solo')) {
     // Convivencia changes trust within the household; solo rehearsals do not.
-    for(const other of alive(contestants)) adjust(next,ids[0],other,event.delta>0 ? 1 : -1);
+    for(const other of alive(contestants)) adjust(next,ids[0],other,event.delta>0 ? (chat ? 2 : 3) : (chat ? -2 : -3));
   }
   return next;
 }
@@ -24,7 +25,7 @@ export function rehearsalRelationships(relations, reparto, events) {
   for(const row of reparto) for(let i=0;i<row.members.length;i++) for(let j=i+1;j<row.members.length;j++) {
     const a=row.members[i],b=row.members[j],key=relationKey(a,b);
     const friction=events.some(e=>e.delta<0 && e.ids.includes(a) && e.ids.includes(b));
-    if(!friction && !rewarded.has(key)) { adjust(next,a,b,4); rewarded.add(key); }
+    if(!friction && !rewarded.has(key)) { adjust(next,a,b,6); rewarded.add(key); }
   }
   return next;
 }
@@ -32,7 +33,7 @@ export function performanceRelationships(relations, performance) {
   const next={...relations};
   const members=performance.members;
   if(members.length>1 && members.reduce((n,m)=>n+m.score,0)/members.length>=6) {
-    for(let i=0;i<members.length;i++) for(let j=i+1;j<members.length;j++) adjust(next,members[i].id,members[j].id,2);
+    for(let i=0;i<members.length;i++) for(let j=i+1;j<members.length;j++) adjust(next,members[i].id,members[j].id,3);
   }
   return next;
 }
@@ -55,4 +56,4 @@ export function updatePairs(pairs, event) {
   return event.pair ? [...remaining,event.pair] : remaining;
 }
 export const isPair = (pairs,a,b) => (pairs || []).some(pair=>pair.includes(a) && pair.includes(b));
-export const relationshipColor = (value, couple=false) => couple ? '#f9a8d4' : value==null ? '#f3f4f6' : value>=80 ? '#dcfce7' : value<35 ? '#fee2e2' : 'white';
+export const relationshipColor = (value, couple=false) => couple ? '#f9a8d4' : value==null ? '#f3f4f6' : value>=55 ? '#dcfce7' : value<35 ? '#fee2e2' : 'white';

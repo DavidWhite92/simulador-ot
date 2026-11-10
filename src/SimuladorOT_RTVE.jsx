@@ -1365,14 +1365,15 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
     setAcademy(emptyAcademy());
     setShowPopularity(false);
       setShowRelationships(false);
-    setContestants([]); 
-    setGala(1); 
-    setViewGala(1); 
-    setGalaLogs({}); 
-    setCarryNominees([]); 
-    setStage("inicio"); 
-    setGstate(null); 
-    setSummaries({}); 
+    setContestants([]);
+    setGala(0);
+    setViewGala(0);
+    setGalaLogs({});
+    setCarryNominees([]);
+    setStage("inicio");
+    setGstate({});
+    setSummaries({});
+    window.scrollTo({top:0,behavior:"instant"});
   }
 
     const onDownloadRecorrido = async () => {
@@ -3814,23 +3815,14 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
 
  
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="min-w-0 px-1 py-3 sm:p-6 max-w-7xl mx-auto space-y-4 sm:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <img
           src="/LogoOT2017_Negro.png"
           alt="Simulador Web de Operación Triunfo"
           className="h-auto max-h-16 sm:max-h-20 md:max-h-[6.75rem] w-auto object-contain shrink-0 cursor-pointer hover:opacity-80 transition"
-          onClick={() => {
-            // 🧹 Igual que el botón Reiniciar
-            setContestants([]);
-            setGala(1);
-            setViewGala(1);
-            setGalaLogs({});
-            setCarryNominees([]);
-            setStage("inicio");
-            setGstate(null);
-            setSummaries({});
-          }}
+          onClick={reiniciar}
+          role="button" tabIndex={0} onKeyDown={e=>{if(e.key==="Enter" || e.key===" "){e.preventDefault();reiniciar();}}}
         />
         <div className="flex gap-2 w-full sm:w-auto">
           {contestants.length === 0 && (
@@ -3906,9 +3898,9 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
         contestants={contestants} gala={shownGala(gala)} onNext={advanceAcademy} onSkip={skipPerformances} onSkipEvents={skipEvents} />}
       {!academyBlocked && contestants.length > 0 && <AcademySummary week={academy.weeks[viewGala]} contestants={contestants} />}
       {contestants.length>0 && !academyBlocked && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-6">
           <Card className="lg:col-span-2">
-            <CardContent className="p-6 space-y-4">
+            <CardContent className="min-w-0 p-2 sm:p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-sm text-muted-foreground">Gala</div>
@@ -3948,7 +3940,7 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
             )}
             {gala <= 9 && gstate.top3?.length > 0 && stage === "votoPublico" && (
                 gstate.favoriteRevealed ? (
-                <Button onClick={() => { setStage("juradoEvaluando"); setViewGala(gala); }}>Continuar con las valoraciones</Button>
+                <></>
               ) : (
                 <Button onClick={revelarTop3YFavorito}>
                   {(gstate.top3RevealCount ?? (gstate.top3NamesRevealed ? 3 : 0)) < 3 ? "⭐ Revelar siguiente favorito" : "🌟 Revelar al favorito de la semana"}
@@ -3957,14 +3949,7 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
               )}
 
             {/* 👇 FALTA ESTE: valoración del jurado */}
-            {stage === "juradoEvaluando" && (
-              <>
-                <Button onClick={() => evaluarSiguientePorJurado(false)}>
-                  {gstate.currentEvaluadoId ? "⚖️ Siguiente: revelar resultado" : "⚖️ Siguiente"}
-                </Button>
-                <Button variant="outline" onClick={() => evaluarSiguientePorJurado(true)}>Revelar todo</Button>
-              </>
-            )}
+
 
             {/* ▶️ GALA 13: botón para puntuar al jurado */}
             {stage === "g11_jurado" && (
@@ -4173,11 +4158,11 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
                         : gstate.ceremony.kind === "teachers" ? summaries[gala]?.profesorSalvoId : gstate.salvadoCompanerosId}
                       onNext={advanceCeremony} onContinue={continueCeremony} onRevealAll={revealAllPeerVotes} />
                   ) : stage === "votoPublico" && gstate.top3Shown && viewGala === gala ? (
-                    <FavoriteReveal state={gstate} contestants={contestants} />
+                    <FavoriteReveal state={gstate} contestants={contestants} onContinue={() => {setStage("juradoEvaluando");setViewGala(gala);}} />
                   ) : stage === "juradoEvaluando" && viewGala === gala ? (
-                    <JuryEvaluation jury={gstate} contestants={contestants} performances={summaries[gala]?.performances} />
+                    <JuryEvaluation jury={gstate} contestants={contestants} performances={summaries[gala]?.performances} onNext={() => evaluarSiguientePorJurado(false)} onRevealAll={() => evaluarSiguientePorJurado(true)} />
                   ) : (
-                  <div className="prose max-w-none">
+                  <details key={viewGala} className="prose max-w-none"><summary className="cursor-pointer font-semibold">Resumen de la gala</summary>
                     {(galaLogs[viewGala]||[]).length===0? (
                       <p className="text-sm text-muted-foreground">Sin eventos en esta gala.</p>
                     ) : (
@@ -4185,7 +4170,7 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
                         {(galaLogs[viewGala]||[]).map((l,i)=>(<li key={i} dangerouslySetInnerHTML={{__html:galaLog(l,repechageEnabled)}} />))}
                       </ul>
                     )}
-                  </div>
+                  </details>
                   )}
 
                       {/* 🧾 DESGLOSE JURADO (G13) */}
@@ -4279,7 +4264,7 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
         {/* === Reparto de temas de la gala visible === */}
         { !academyBlocked && summaries[viewGala]?.[viewGala]?.reparto && (
           <Card className="mt-6">
-            <CardContent className="p-6 space-y-4">
+            <CardContent className="min-w-0 p-2 sm:p-6 space-y-4">
               <h3 className="text-lg font-semibold">Reparto de temas — Gala {shownGala(viewGala)}</h3>
               {summaries[viewGala][viewGala].groupSong && (
                 <p className="rounded-lg bg-gray-100 px-4 py-3 text-sm">
@@ -4364,11 +4349,16 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
 
       {!academyBlocked && Object.keys(summaries).length>0 && (
         <Card>
-          <CardContent className="p-6 space-y-2">
-            <div className="flex items-center justify-between">
+          <CardContent className="min-w-0 p-2 sm:p-6 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-xl font-semibold">{showRelationships ? "Tabla de Relaciones" : showPopularity ? "Tabla de Popularidad" : "Recorrido del concurso"}</h2>
-              {seasonFinished && <Button variant="outline" onClick={() => { setShowRelationships(false); setShowPopularity(v => !v); }}>{showPopularity ? "Ver recorrido" : "Tabla de Popularidad"}</Button>}
-              {seasonFinished && <Button variant="outline" onClick={() => { setShowPopularity(false); setShowRelationships(v => !v); }}>{showRelationships ? "Ver recorrido" : "Tabla de Relaciones"}</Button>}
+              {seasonFinished && <label className="w-full text-sm sm:hidden">Tabla
+                <select aria-label="Elegir tabla" className="mt-1 w-full rounded-lg border p-2" value={showRelationships?'relationships':showPopularity?'popularity':'journey'} onChange={e=>{setShowRelationships(e.target.value==='relationships');setShowPopularity(e.target.value==='popularity');}}>
+                  <option value="journey">Recorrido</option><option value="popularity">Popularidad</option><option value="relationships">Relaciones</option>
+                </select>
+              </label>}
+              {seasonFinished && <Button className="hidden sm:inline-flex" variant="outline" onClick={() => { setShowRelationships(false); setShowPopularity(v => !v); }}>{showPopularity ? "Ver recorrido" : "Tabla de Popularidad"}</Button>}
+              {seasonFinished && <Button className="hidden sm:inline-flex" variant="outline" onClick={() => { setShowPopularity(false); setShowRelationships(v => !v); }}>{showRelationships ? "Ver recorrido" : "Tabla de Relaciones"}</Button>}
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="secondary" onClick={onDownloadRecorrido}>
                   ⬇️ Descargar tabla
