@@ -1,3 +1,5 @@
+import { returnDecision } from "./returnLabels.js";
+import { suspendedNominationLabel } from "./suspendedNominations.js";
 import { audiencePercentages, createPerformances } from './academy.js';
 import { selectPerformanceNominees } from './juryPerformance.js';
 
@@ -54,10 +56,12 @@ export function useRepechage({gala,gstate,setGstate,contestants,setContestants,s
       }
     } else if(state.phase==='surprise') {
       log(`🎄 ${state.judge}: Como es Navidad, no queremos amargaros el dulce. ¡Todos os salváis!`);
-      setSummaries(s=>({...s,8:{...s[8],falseNominees:state.falseNominees,juradoNominados:[],finalNominees:[],8:{...s[8]?.[8],reparto:(s[8]?.[8]?.reparto || []).map(row=>({...row,valor:row.members.map(id=>{
-        const c=contestants.find(c=>c.id===id); if(c?.status!=='active') return row.valor || 'Eliminado';
-        return `${nameOf(id)}: ${id===gstate.favoritoId?'Favorito/a':'Salvado/a'}`;
-      }).join(' · ')}))}}}));
+      setSummaries(s=>{
+        const summary={...s[8],repechageAnnounced:true,falseNominees:state.falseNominees,juradoNominados:[],finalNominees:[],
+          favoritoId:gstate.favoritoId, favoritePct:gstate.publicRank?.find(r=>r.id===gstate.favoritoId)?.pct ?? s[8]?.favoritePct ?? s[8]?.top3Pct?.[0]};
+        return {...s,8:{...summary,8:{...summary[8],reparto:(summary[8]?.reparto || []).map(row=>({...row,
+          valor:row.members.map(id=>suspendedNominationLabel(id,summary,contestants)).join(' | ')}))}}};
+      });
       setGstate(s=>({...s,nominados:[],salvados:new Set(contestants.filter(c=>c.status==='active').map(c=>c.id)),repechage:{...state,phase:'announcement'}}));
       setCarryNominees([]);
     } else if(state.phase==='announcement') {
@@ -114,14 +118,18 @@ export function repechageCell(c,summaries,gala) {
   const suffix=c.gender==='m'?'o':c.gender==='f'?'a':'e';
   const s=summaries[gala];
   if(gala===8 && s?.falseNominees?.includes(c.id)) return {text:`Salvad${suffix}${s.top3Ids?.includes(c.id)?'º':''}`,background:'#65a1a5'};
-  if(gala===8 && s?.falseNominees && s.top3Ids?.includes(c.id) && s.favoritoId!==c.id) return {text:`Salvad${suffix}º`,background:'#AFEEEE'};
+  if(gala===8 && s?.falseNominees && s.top3Ids?.includes(c.id) && s.favoritoId!==c.id) return {text:`Salvad${suffix}`,background:'#AFEEEE'};
   if(gala===8 && s?.repechage?.candidates?.includes(c.id)) {
     if(s.repechage.selected.includes(c.id)) {
       const split=c.history.some(h=>h.gala===8 && /^Eliminado/.test(h.evento));
-      return {text:split?'Eli. | Can.':`Candidat${suffix}`,background:'#fff3a6',split};
+      return {text:split?'Eli | Can':`Candidat${suffix}`,background:'#fff3a6',split,parts:split?[{text:'Eli',background:'red',color:'white'},{text:'Can',background:'#fff3a6'}]:undefined};
     }
     return {text:`Eliminad${suffix}`,background:'tomato',color:'white'};
   }
-  if(gala===9 && s?.repechage?.candidates?.includes(c.id)) return s.repechage.winner===c.id ? {text:`Repescad${suffix}`,background:'#d879d8'} : {text:`Eliminad${suffix}`,background:'tomato',color:'white'};
+  if(gala===9 && s?.repechage?.candidates?.includes(c.id)) {
+    if(s.repechage.winner!==c.id) return {text:`Eliminad${suffix}`,background:'tomato',color:'white'};
+    const decision=returnDecision(c.id,s);
+    return {text:`Repescad${suffix}`,background:'#d879d8',split:Boolean(decision),parts:decision?[{text:'Rep.',background:'#d879d8'},decision]:undefined};
+  }
   return null;
 }

@@ -1,4 +1,10 @@
-import { resolveRepechage, displayGala, nextGala, visibleGalas, galaLog, lastElimination } from "./lib/seasonSchedule";
+import { contestantFlags } from "./lib/contestantStatus";
+import { currentGalaLabel } from "./lib/currentGalaLabel";
+import SplitJourneyCell from "./components/SplitJourneyCell";
+import { returnPerformanceLabel } from "./lib/returnLabels";
+import { suspendedNominationLabel } from "./lib/suspendedNominations";
+import { freshGroups, previousGroups, assignmentPlanGala } from "./lib/assignments";
+import { repechageColumnsVisible, resolveRepechage, displayGala, nextGala, visibleGalas, galaLog, lastElimination } from "./lib/seasonSchedule";
 import RepechageReveal from "./components/RepechageReveal";
 import { useRepechage, repechageCell, absentAfterElimination } from "./lib/repechage";
 import TablePerson from "./components/TablePerson";
@@ -125,12 +131,13 @@ function fmtPct(n){
     let n = 0;
     // Galas anteriores
     for (let k = 0; k < g; k++) {
+      if (summaries?.[k]?.falseNominees) continue;
       const list =
         summaries?.[k]?.juradoNominados               // << clave real que usas
         ?? summaries?.[k]?.[k]?.nominados
         ?? summaries?.[k]?.nominados
         ?? [];
-      for (const it of list) if (nomIdOf(it) === id) n++;
+      if (list.some(it => String(nomIdOf(it)) === String(id))) n++;
     }
     // Gala actual (usa curList si te la pasan; si no, lee de summaries)
     const cur =
@@ -139,7 +146,7 @@ function fmtPct(n){
       ?? summaries?.[g]?.[g]?.nominados
       ?? summaries?.[g]?.nominados
       ?? [];
-    for (const it of cur) if (nomIdOf(it) === id) n++;
+    if (!summaries?.[g]?.falseNominees && cur.some(it => String(nomIdOf(it)) === String(id))) n++;
 
     return n;
   }
@@ -154,7 +161,7 @@ function fmtPct(n){
   }
 
   function pickProfSave(doubtIds, summaries, galaIndex, fallbackFn, curList) {
-    if (galaIndex >= 0 && galaIndex <= 11) {
+    if (galaIndex >= 0) {
       return pickProfSaveByFewestNoms(doubtIds, summaries, galaIndex, curList);
     }
     return fallbackFn ? fallbackFn(doubtIds) : Array.from(doubtIds)[0];
@@ -310,7 +317,6 @@ function performanceModifier(stats, req){
 // === REPARTO DE TEMAS =======================================================
 
     function repartoPlan(g){
-      if (g === 10 || g === 11) return {trios:0,duos:1,solos:Infinity};
       if (g === 0)  return { trios:0, duos:0, solos:Infinity }; // 18 solos
       if (g === 1)  return { trios:0, duos:8,  solos:0  };
       if (g === 2)  return { trios:2, duos:5,  solos:0  };
@@ -329,14 +335,7 @@ function performanceModifier(stats, req){
       return { trios:0, duos:0, solos:Infinity };
     }
 
-    const chunkRandom = (ids, k) => {
-      const pool = shuffle(ids);
-      const out = [];
-      while (pool.length >= k) out.push(pool.splice(0, k));
-      return { groups: out, rest: pool };
-    };
-
-        function buildRepartoParaGala(galaNum, activosIds, nominadosDueloIds = []){
+        function buildRepartoParaGala(galaNum, activosIds, nominadosDueloIds = [], summaries = {}){
       const filas = [];
       const nomSet = new Set(nominadosDueloIds);
 
@@ -367,27 +366,8 @@ function performanceModifier(stats, req){
       }
 
       // ⬇️ Lógica genérica (G0–G15 y G13 ya funciona con pool correcto)
-      const plan = repartoPlan(galaNum);
-
-      if (plan.trios){
-        const { groups, rest } = chunkRandom(baseSet, 3);
-        groups.slice(0, plan.trios).forEach(m => filas.push({ type:'trio', members:m, song:'', valor:'' }));
-        baseSet = rest.concat(groups.slice(plan.trios).flat());
-      }
-      if (plan.duos){
-        const { groups, rest } = chunkRandom(baseSet, 2);
-        groups.slice(0, plan.duos).forEach(m => filas.push({ type:'duo', members:m, song:'', valor:'' }));
-        baseSet = rest.concat(groups.slice(plan.duos).flat());
-      }
-      if (plan.solos){
-        const nSolos = isFinite(plan.solos) ? Math.min(plan.solos, baseSet.length) : baseSet.length;
-        const solos = shuffle(baseSet).splice(0, nSolos);
-        solos.forEach(id => filas.push({ type:'solo', members:[id], song:'', valor:'' }));
-        baseSet = baseSet.filter(id => !solos.includes(id));
-      }
-
-      // Cualquier sobrante, como solos
-      baseSet.forEach(id => filas.push({ type:'solo', members:[id], song:'', valor:'' }));
+      const plan = repartoPlan(assignmentPlanGala(galaNum,Boolean(summaries[8]?.repechage)));
+      filas.push(...freshGroups(baseSet,plan,previousGroups(summaries,galaNum)));
       return filas;
     }
 
@@ -425,7 +405,6 @@ function performanceModifier(stats, req){
 
       const favId   = S.favoritoId ?? null;
       const top3Pct = Array.isArray(S.top3Pct) ? S.top3Pct : [];
-      const duelSaved = S.duelSaved || {};
       const duelNow   = S.duel || null; // {a,b,pctA,pctB,winner} si el duelo se resuelve en ESTA gala
 
       // —— Etiquetador por concursante
@@ -464,18 +443,14 @@ function performanceModifier(stats, req){
         }
 
         // 1) Si viene de salvarse en el duelo ANTERIOR (arrastrado)
-        if (typeof duelSaved[id] === "number" && !parts.some(p => p.startsWith("Salvad"))) {
-          parts.push(`Salvad${sufG} por el público (${duelSaved[id].toFixed(2)}%)`);
-        }
+
 
   // … A PARTIR DE AQUÍ SIGUE TU CÓDIGO EXISTENTE (G1–9, G12, etc.)
 
 
           // 1.5) FAVORIT@ DEL PÚBLICO (G1–G9) → Inmune, se detiene aquí
         if (galaNum <= 11 && favId && id === favId) {
-          const idsTop = Array.isArray(S.top3Ids) ? S.top3Ids : [];
-          const idx = idsTop.indexOf(id);
-          const pct = (idx >= 0 && typeof top3Pct[idx] === "number") ? top3Pct[idx] : undefined;
+          const pct = S.favoritePct ?? (top3Pct.length ? Math.max(...top3Pct) : undefined);
           // devuelve directamente, sin añadir más partes
           return `Favorit${sufG} del público${pct != null ? ` (${pct.toFixed(2)}%)` : ""}`;
         }
@@ -837,6 +812,7 @@ export default function SimuladorOT({ repechageOption, setRepechageOption, judge
 
   const { academy, setAcademy, week: academyWeek, reparto: academyReparto, blocked: academyBlocked, next: advanceAcademy, skipPerformances, chat: academyChat, chatGala, nextChat, skipEvents, skipChat } = useAcademySeason({ contestants, setContestants, summaries, setSummaries, gala, songsMeta, stage, mode });
   const repechageEnabled = academy.repechageEnabled !== false;
+  const tableRepechageEnabled = repechageColumnsVisible(repechageOption,repechageEnabled,summaries[8]);
   const shownGala = n => displayGala(n,repechageEnabled);
   useMusicBackground(!contestants.length ? mode : !academyWeek || academyWeek.phase === "events" ? mode : !academyWeek.done || stage === "galaCerrada" || (stage === "repechage" && gstate.repechage?.phase === "performances") ? null : "tension", `${mode}-${gala}`);
   const [showPopularity, setShowPopularity] = useState(false);
@@ -1065,7 +1041,7 @@ export default function SimuladorOT({ repechageOption, setRepechageOption, judge
 
     // 👇 Añádelo aquí
     // Mostrar favorit@ solo cuando esté en summaries (fase 2 ya revelada)
-    const favId = summaries?.[viewGala]?.favoritoId ?? null;
+
 
 
   const pushLog = (entry, galaNum=gala)=> setGalaLogs(logs=>({...logs,[galaNum]:[...(logs[galaNum]||[]), entry]}));
@@ -1104,7 +1080,7 @@ export default function SimuladorOT({ repechageOption, setRepechageOption, judge
 
         const activosIds = [...new Set([...vivos.map(c => c.id), ...(num === 9 ? summaries[8]?.repechage?.selected || [] : [])])];
         const nominadosDuelo = (num >= 2 && num <= 12) ? [...carryNominees] : [];
-        const repartoBase = buildRepartoParaGala(num, activosIds, nominadosDuelo);
+        const repartoBase = buildRepartoParaGala(num, activosIds, nominadosDuelo, summaries);
         const { reparto, groupSong } = buildRepartoConCanciones({
             galaNum: num,
             reparto: repartoBase,
@@ -1113,8 +1089,8 @@ export default function SimuladorOT({ repechageOption, setRepechageOption, judge
           });
       // ✅ Guardado de la nueva gala: arrastra solo duelSaved de la anterior
       setSummaries(s => {
-        const prev = s[num - 1];                      // gala anterior
-        const duelSaved = prev?.duelSaved || {};      // traer el "salvado por el público (%)"
+        // Los porcentajes pertenecen solo a esta gala.                      // gala anterior
+        const duelSaved = {};      // traer el "salvado por el público (%)"
 
         return {
           ...s,
@@ -2125,7 +2101,7 @@ export default function SimuladorOT({ repechageOption, setRepechageOption, judge
       salvados.add(favoritoId);
       const top3Pct = manual ? [] : top3Rank.map(r => r.pct);
       setGstate(st => ({ ...st, favoritoId, salvados, top3Pct, favoriteRevealed: true, finalTwoPlan: undefined }));
-      setSummaries(s => ({ ...s, [gala]: { ...(s[gala] || { gala }), top3Ids: gstate.top3, top3Pct, favoritoId } }));
+      setSummaries(s => ({ ...s, [gala]: { ...(s[gala] || { gala }), top3Ids: gstate.top3, top3Pct, favoritoId, favoritePct: top3Rank.find(r=>r.id===favoritoId)?.pct } }));
       pushLog(`🌟 <strong>Favorito/a: ${nameOf(favoritoId)}</strong>. ` + (manual
         ? `Top-3: ${order.map(nameOf).join(" · ")}`
         : `Porcentajes Top3: ${top3Rank.map(t => `${nameOf(t.id)} ${fmtPct(t.pct)}`).join(" · ")}`));
@@ -3086,7 +3062,7 @@ function gala10Profes() {
   // === FIN MODO MANUAL ===
 
   // 👉 MODO AUTOMÁTICO (sin cambios)
-  const countUntil = 9;
+  const countUntil = gala - 1;
   const curList = undefined;
 
   const salvado = pickProfSave(
@@ -4195,8 +4171,7 @@ function gala10Profes() {
 
                           {/* === Etiqueta de estado con Nominad@ incluido === */}
                           {(() => {
-                            const isNom = Array.isArray(carryNominees) && carryNominees.includes(c.id);
-                            const isFav = c.id === favId;
+                            const {isNom,isFav} = contestantFlags(c,gala,summaries,carryNominees);
                             const s = suf(c.gender || "e"); // ← o/a/e
 
                             const labelText =
@@ -4307,9 +4282,9 @@ function gala10Profes() {
                     ${
                       c.status === "ganador"
                         ? "border-yellow-300" // 🟡 Ganador/a
-                        : Array.isArray(carryNominees) && carryNominees.includes(c.id)
+                        : contestantFlags(c,gala,summaries,carryNominees).isNom
                         ? "border-orange-500" // 🔶 Nominad@
-                        : c.id === favId
+                        : contestantFlags(c,gala,summaries,carryNominees).isFav
                         ? "border-blue-500" // 💙 Favorit@
                         : "border-transparent"
                     }
@@ -4350,7 +4325,15 @@ function gala10Profes() {
                       const valores = String(row.valor || "").split(" | ");
 
                       return members.map((id, idx) => {
-                        const valor = valores[idx] || valores[0] || "";
+                        const favoriteSummary = summaries[viewGala];
+                        const favoritePercent = favoriteSummary?.favoritePct ?? (favoriteSummary?.top3Pct?.length ? Math.max(...favoriteSummary.top3Pct) : undefined);
+                        const favoriteSuffix = contestants.find(c=>c.id===id)?.gender === 'f' ? 'a' : contestants.find(c=>c.id===id)?.gender === 'm' ? 'o' : 'e';
+                        const rawValor = favoriteSummary?.favoritoId === id
+                          ? `Favorit${favoriteSuffix} del Público${Number.isFinite(favoritePercent) ? ` (${favoritePercent.toFixed(2)}%)` : ''}`
+                          : viewGala === 8 && summaries[8]?.falseNominees
+                          ? suspendedNominationLabel(id,summaries[8],contestants,gala===8 ? gstate.publicRank : [])
+                          : viewGala === 9 ? returnPerformanceLabel(id,summaries[9],contestants,valores[idx] || valores[0] || "") : valores[idx] || valores[0] || "";
+                        const valor = viewGala >= 1 && viewGala <= 11 ? currentGalaLabel(rawValor,id,summaries[viewGala]) : rawValor;
                         const { bg, fg } = valorBgColor(valor, viewGala);
 
                         // 🔵 --- Bloque del Paso A ---
@@ -4426,7 +4409,7 @@ function gala10Profes() {
                 </Button>
               </div>
             </div>
-            {showRelationships && seasonFinished ? <RelationshipsTable repechageEnabled={repechageEnabled} contestants={contestants} summaries={summaries} relations={academy.relationships} pairs={academy.pairs} /> : showPopularity && seasonFinished ? <PopularityTable repechageEnabled={repechageEnabled} contestants={contestants} summaries={summaries} /> : <RecorridoTable repechageEnabled={repechageEnabled} contestants={contestants} summaries={summaries} />}
+            {showRelationships && seasonFinished ? <RelationshipsTable repechageEnabled={repechageEnabled} contestants={contestants} summaries={summaries} relations={academy.relationships} pairs={academy.pairs} /> : showPopularity && seasonFinished ? <PopularityTable repechageEnabled={repechageEnabled} contestants={contestants} summaries={summaries} /> : <RecorridoTable repechageEnabled={tableRepechageEnabled} contestants={contestants} summaries={summaries} />}
           </CardContent>
         </Card>
       )}
@@ -4523,7 +4506,7 @@ function RecorridoTable({ contestants, summaries, repechageEnabled=true }){
       let text="—", style=cellStyle("#eee","#555");
       const elimGala = eliminationGalas.includes(g) ? g : null;
       const special = repechageCell(c,summaries,g);
-      if (special) { cells.push({text:special.split ? <span style={{display:"grid",gridTemplateColumns:"1fr 1fr"}}><span style={{color:"white"}}>Eli.</span><span>Can.</span></span> : special.text,style:{...cellStyle(special.background,special.color || '#111'),...(special.split ? {background:'linear-gradient(to right, red 0%, red 50%, #fff3a6 50%, #fff3a6 100%)'} : {})}}); continue; }
+      if (special) { cells.push({text:special.split ? <SplitJourneyCell parts={special.parts} /> : special.text,style:{...cellStyle(special.background,special.color || '#111'),...(special.split?{padding:0}:{})}}); continue; }
       if (absentAfterElimination(c,summaries,g)) { cells.push({ text: "—", style: cellStyle("#ccc", "#666") }); continue; }
       if (elimGala !== null && g === elimGala) {
         const gnd = getGender(c.id);

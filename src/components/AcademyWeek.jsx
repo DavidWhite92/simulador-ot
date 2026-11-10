@@ -29,7 +29,7 @@ export default function AcademyWeek({ week, reparto, groupSong, contestants, gal
       <h3 className="text-lg font-semibold">Reparto de temas</h3>
       {groupSong && <p className="font-semibold">Actuación grupal: {groupSong}</p>}
       <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th className="p-2">Concursantes</th><th>Tema</th></tr></thead>
-        <tbody>{reparto.map((row,i) => <tr key={i} className="border-t"><td className="p-2">{row.members.map(id => person(id)?.name).join(' · ')}</td><td>{row.song}</td></tr>)}</tbody></table></div>
+        <tbody>{reparto.map((row,i) => <tr key={i} className="border-t"><td className="p-2"><div className="flex items-center gap-1">{row.members.map(id=><img key={id} src={person(id)?.photo || '/ot_photos/sinfoto.gif'} alt={person(id)?.name || 'Concursante'} title={person(id)?.name} width={31} height={31} style={{width:31,height:31,objectFit:'cover',flexShrink:0}} />)}</div></td><td>{row.song}</td></tr>)}</tbody></table></div>
     </> : <Motion.div key={`${week.phase}-${performing ? week.performed : week.shown}`} initial={{ opacity: 0, y: reduced ? 0 : 20 }} animate={{ opacity: 1, y: 0 }} className="min-h-60 space-y-5">
       {performing ? performance ? <>
         <p className="text-sm text-gray-500">Actuación {week.performed} de {week.performances.length}</p>

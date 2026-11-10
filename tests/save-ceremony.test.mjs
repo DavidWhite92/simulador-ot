@@ -221,3 +221,44 @@ for (const file of ['SimuladorOT.jsx', 'SimuladorOT_RTVE.jsx']) {
     assert.equal(c.gstate.ceremony.votes[1].voterId,'c4');
   });
 }
+
+for (const file of ['SimuladorOT.jsx','SimuladorOT_RTVE.jsx']) for(const manual of [false,true]) {
+  test(`${file}: extra ordinary galas continue to favourites after the duel (${manual})`,()=>{
+    for(const gala of [10,11]) {
+      const {context:c}=harness(file,manual);
+      c.gala=gala;c.summaries={[gala]:{}};
+      // Reproduce the stale-closure route that previously returned to dueloPendiente.
+      c.nextStageFor=()=> 'dueloPendiente';
+      c.iniciarDueloCiego();c.advanceCeremony();c.advanceCeremony();c.advanceCeremony();
+      assert.equal(c.gstate.ceremony.nextStage,'votoPublico');
+      c.continueCeremony();assert.equal(c.stage,'votoPublico');
+      assert.equal(c.carryNominees.length,0);
+    }
+  });
+  test(`${file}: original Gala 10 without repechage reaches its normal phase (${manual})`,()=>{
+    const {context:c}=harness(file,manual);
+    c.gala=12;c.summaries={12:{}};
+    c.iniciarDueloCiego();c.advanceCeremony();c.advanceCeremony();c.advanceCeremony();c.continueCeremony();
+    assert.equal(c.stage,file==='SimuladorOT.jsx'?'gala10_jueces':'juradoEvaluando');
+  });
+}
+
+for(const file of ['SimuladorOT.jsx','SimuladorOT_RTVE.jsx']) {
+  test(`${file}: teachers in extended galas save the least-nominated candidate`,()=>{
+    for(const gala of [9,10,11,12]) {
+      const {context:c}=harness(file);
+      const source=readFileSync(new URL(`../src/${file}`,import.meta.url),'utf8');
+      const start=source.indexOf('  function countNomsThrough('),end=source.indexOf('// === CANCIONES',start);
+      vm.runInContext(source.slice(start,end),c);
+      c.gala=gala;
+      c.summaries={1:{juradoNominados:['c1','c2']},2:{juradoNominados:['c1','c3']},3:{juradoNominados:['c1','c2']},4:{juradoNominados:['c1','c3']},5:{juradoNominados:['c1','c4']},6:{juradoNominados:['c1','c4']},8:{falseNominees:['c2'],juradoNominados:['c2']},[gala]:{juradoNominados:['c1','c2','c3','c4']}};
+      c.gstate.nominados=['c1','c2','c3','c4'];
+      c.startCeremony('teachers',c.gstate.nominados,'teachers');
+      c.advanceCeremony();
+      assert.notEqual(c.gstate.profesorSalvoId,'c1');
+      assert.equal(c.countNomsThrough('c1',c.summaries,7),6);
+      assert.equal(c.countNomsThrough('c2',c.summaries,8),2);
+      assert.ok(['c2','c3','c4'].includes(c.gstate.profesorSalvoId));
+    }
+  });
+}

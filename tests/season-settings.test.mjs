@@ -32,7 +32,7 @@ test('candidates keep elimination order and returning contestants use their late
   const latest={id:'b',gender:'f',history:[{gala:8,evento:'Eliminado'}]};
   const summaries={8:{repechage:{candidates:['a','b','c'],selected:['a','b']}},9:{repechage:{candidates:['a','b'],winner:'a'}}};
   assert.equal(repechageCell(old,summaries,8).text,'Candidato');
-  assert.equal(repechageCell(latest,summaries,8).text,'Eli. | Can.');
+  assert.equal(repechageCell(latest,summaries,8).text,'Eli | Can');
   assert.equal(repechageCell({id:'c',gender:'m'},summaries,8).background,'tomato');
   assert.equal(repechageCell(old,summaries,9).text,'Repescado');
   assert.equal(lastElimination(old),3);
