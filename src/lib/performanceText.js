@@ -100,3 +100,37 @@ export function describeGroup(members, random) {
     : ['El conjunto ha alternado momentos de conexión con otros de desconcierto.', 'Las voces han encajado solo a ratos y la interpretación ha quedado irregular.'];
   return pick(options, random);
 }
+
+export function describeOpening(members,random=Math.random) {
+  const score=members.reduce((sum,m)=>sum+m.score,0)/members.length;
+  const bank=score>=9.2 ? [
+    'La Academia ha abierto la gala con una actuación espectacular: voces, energía y emoción han encajado de principio a fin.',
+    'La grupal ha puesto al público en pie. Los cambios de dinámica y el último estribillo han sido memorables.',
+    'La apertura ha tenido una precisión extraordinaria sin perder naturalidad ni emoción.',
+  ] : score>=8 ? [
+    'La grupal ha sonado muy sólida, con entradas precisas y un estribillo lleno de fuerza.',
+    'Las voces han encontrado un buen equilibrio y el grupo ha transmitido seguridad sobre el escenario.',
+    'La Academia ha conectado con el público gracias a una interpretación compacta y expresiva.',
+  ] : score>=6.8 ? [
+    'La apertura ha funcionado bien: el grupo ha sostenido el tempo y ha ganado confianza en el estribillo.',
+    'La grupal ha tenido buenos momentos de complicidad y un final convincente.',
+    'La energía compartida ha dado vida a la canción, aunque algunos ataques podrían haber sido más precisos.',
+  ] : score>=5.8 ? [
+    'La grupal ha cumplido, con una interpretación ordenada aunque algo contenida.',
+    'La canción ha salido adelante sin grandes momentos de brillo. El grupo ha priorizado llegar junto al final.',
+    'La apertura ha sido correcta, pero ha faltado contraste entre las estrofas y el estribillo.',
+  ] : score>=4.6 ? [
+    'La grupal ha sido irregular: algunas voces han entrado con seguridad y otras se han quedado atrás.',
+    'El grupo ha alternado fragmentos bien resueltos con desajustes de afinación y de tempo.',
+    'La energía del comienzo se ha dispersado y ha costado recuperar una interpretación común.',
+  ] : score>=3 ? [
+    'La apertura ha resultado accidentada. Las entradas desiguales han dificultado que las voces encajaran.',
+    'La grupal ha perdido cohesión y varias frases han quedado tapadas por el desorden del conjunto.',
+    'Los problemas de afinación y la falta de escucha han pesado más que la energía del grupo.',
+  ] : [
+    'La grupal se ha desmoronado: se ha perdido el pulso y el final ha llegado sin una dirección compartida.',
+    'La apertura ha sido desastrosa. El grupo no ha conseguido recuperar la coordinación tras los primeros errores.',
+    'Las voces han quedado desconectadas y la canción ha terminado entre entradas fallidas y mucha inseguridad.',
+  ];
+  return pick(bank,random);
+}

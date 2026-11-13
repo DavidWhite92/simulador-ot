@@ -135,7 +135,7 @@ function weekHarness() {
   const ctx = vm.createContext({
     updatePairs, eventRelationships, rehearsalRelationships, performanceRelationships,
     useState: init => { stored ??= init(); return [stored, update => { stored = typeof update === 'function' ? update(stored) : update; }]; },
-    createChatEvents: (people, summary, random, allow, gala) => createChatEvents(people, summary, rng(53), allow, gala), applyPopularity, createAcademyEvents: (...args) => createAcademyEvents(...args, rng(8)), createPerformances: (...args) => createPerformances(...args, rng(20)), popularityOf,
+    createChatEvents: (people, summary, random, allow, gala) => createChatEvents(people, summary, rng(53), allow, gala), applyPopularity, createAcademyEvents: (people,rows,pairs,_random,meta) => createAcademyEvents(people,rows,pairs,rng(8),meta), createPerformances: (...args) => createPerformances(...args, rng(20)), popularityOf,
   });
   vm.runInContext(source, ctx);
   const args = { contestants: people(), summaries: { 1: { 1: { reparto } } }, gala: 1, songsMeta: {} };
@@ -417,3 +417,30 @@ test('collective household moments include large groups and affect only their pa
   assert.equal(signs.size,2);
 });
 
+
+test('groupal opens both rehearsal blocks and the gala without affecting jury grades',()=>{
+  const {args,render}=weekHarness();
+  args.summaries[1][1].groupSong='Grupal';
+  render().next();
+  for(const kind of ['rehearsal','mic']) {
+    const events=render().week.events.filter(e=>e.kind===kind);
+    assert.equal(events[0].isGroup,true);
+    assert.equal(events[0].song,'Grupal');
+    assert.ok(events[0].feedback.some(c=>c.teacher==='Manu Guix'));
+    assert.ok(events.every(e=>e.feedback.length>=1 && e.feedback.length<=2));
+  }
+  render().skipEvents();
+  assert.equal(render().week.performances[0].isGroup,true);
+  const before=JSON.stringify(args.contestants);
+  render().next();
+  assert.equal(JSON.stringify(args.contestants),before);
+  assert.equal(args.summaries[1].performances,undefined);
+  render().skipPerformances();
+  assert.equal(Object.keys(args.summaries[1].performances).length,8);
+  assert.ok(Object.values(args.summaries[1].performances).every(p=>p.attempts===1));
+});
+test('skipping every performance also excludes the groupal from jury grades',()=>{
+  const {args,render}=weekHarness();args.summaries[1][1].groupSong='Grupal';
+  render().next();render().skipEvents();render().skipPerformances();
+  assert.ok(Object.values(args.summaries[1].performances).every(p=>p.attempts===1));
+});

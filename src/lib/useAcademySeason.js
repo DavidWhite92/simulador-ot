@@ -8,6 +8,9 @@ export function useAcademySeason({ contestants, setContestants, summaries, setSu
   const [academy, setAcademy] = useState(emptyAcademy);
   const week = academy.weeks[gala];
   const reparto = summaries[gala]?.[gala]?.reparto || [];
+  const groupSong=summaries[gala]?.[gala]?.groupSong;
+  const groupMembers=[...new Set(reparto.flatMap(row=>row.members))];
+  const galaReparto=groupSong ? [{type:'group',song:groupSong,members:groupMembers},...reparto] : reparto;
   const finalGala = mode === 'rtve' ? 15 : 17;
   const chatGala = gala > 0 && gala < finalGala && stage === 'galaCerrada' && week?.done && !week.chatDone ? gala : null;
   const chat = chatGala == null ? null : academy.weeks[chatGala]?.chat || { events: [], shown: 0 };
@@ -22,14 +25,14 @@ export function useAcademySeason({ contestants, setContestants, summaries, setSu
   function next() {
     if (!week) {
       saveWeek({ phase: gala === 0 ? 'performances' : 'events', shown: 0,
-        events: gala === 0 ? [] : createAcademyEvents(contestants, reparto, academy.pairs),
-        performances: gala === 0 ? createPerformances(contestants, reparto, songsMeta, academy.judges) : [], performed: 0 });
+        events: gala === 0 ? [] : createAcademyEvents(contestants, galaReparto, academy.pairs, undefined, songsMeta),
+        performances: gala === 0 ? createPerformances(contestants, galaReparto, songsMeta, academy.judges) : [], performed: 0 });
       return;
     }
     if (week.phase === 'events') {
       if (week.shown < week.events.length) {
         const event = week.events[week.shown];
-        recordRelationships(eventRelationships(academy.relationships, event, contestants));
+        if(!event.isGroup) recordRelationships(eventRelationships(academy.relationships, event, contestants));
         setSummaries(s=>({...s,[gala]:{...s[gala],pairs:updatePairs(academy.pairs,event)}}));
         const changes = Object.fromEntries(event.ids.map(id => [id, event.delta]));
         setContestants(list => applyPopularity(list, changes));
@@ -37,12 +40,13 @@ export function useAcademySeason({ contestants, setContestants, summaries, setSu
           weeks: { ...a.weeks, [gala]: { ...week, shown: week.shown + 1 } } }));
       } else {
         recordRelationships(rehearsalRelationships(academy.relationships, reparto, week.events));
-        saveWeek({ ...week, phase: 'performances', performances: createPerformances(contestants, reparto, songsMeta, academy.judges) });
+        saveWeek({ ...week, phase: 'performances', performances: createPerformances(contestants, galaReparto, songsMeta, academy.judges) });
       }
       return;
     }
     if (week.performed < week.performances.length) {
       const performance = week.performances[week.performed];
+      if(performance.isGroup) {saveWeek({...week,performed:week.performed+1});return;}
       recordRelationships(performanceRelationships(academy.relationships, performance));
       setContestants(list => applyPopularity(list, Object.fromEntries(performance.members.map(m => [m.id, m.delta]))));
       setSummaries(s => {
@@ -69,6 +73,7 @@ export function useAcademySeason({ contestants, setContestants, summaries, setSu
     const performances = { ...summaries[gala]?.performances };
     let relationships = academy.relationships || {};
     for (const performance of week.performances.slice(week.performed)) {
+      if(performance.isGroup) continue;
       relationships = performanceRelationships(relationships, performance);
       updated = applyPopularity(updated, Object.fromEntries(performance.members.map(m => [m.id,m.delta])));
       for (const member of performance.members) {
@@ -106,14 +111,14 @@ export function useAcademySeason({ contestants, setContestants, summaries, setSu
     let pairs = [...academy.pairs];
     let relationships = academy.relationships || {};
     for (const event of week.events.slice(week.shown)) {
-      relationships = eventRelationships(relationships, event, contestants);
+      if(!event.isGroup) relationships = eventRelationships(relationships, event, contestants);
       updated = applyPopularity(updated, Object.fromEntries(event.ids.map(id => [id,event.delta])));
       pairs = updatePairs(pairs,event);
     }
     setContestants(() => updated);
     recordRelationships(rehearsalRelationships(relationships, reparto, week.events));
     setSummaries(s=>({...s,[gala]:{...s[gala],pairs}}));
-    setAcademy(a => ({ ...a, pairs, weeks: { ...a.weeks, [gala]: { ...week, shown: week.events.length, phase: 'performances', performances: createPerformances(updated, reparto, songsMeta, academy.judges) } } }));
+    setAcademy(a => ({ ...a, pairs, weeks: { ...a.weeks, [gala]: { ...week, shown: week.events.length, phase: 'performances', performances: createPerformances(updated, galaReparto, songsMeta, academy.judges) } } }));
   }
   function skipChat() {
     if (chatGala == null) return;

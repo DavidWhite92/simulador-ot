@@ -1,12 +1,13 @@
 import {useId,useState} from 'react';
 import {motion as Motion} from 'framer-motion';
-import {validateReparto} from '../lib/songEditor';
+import {validateReparto,validateDistribution} from '../lib/songEditor';
 import {Button} from './ui/button';
 
 export default function SongDistribution({reparto,groupSong,contestants,songs,manual,nominees=[],soloOnly=false,direct=false,onConfirm}) {
-  const [rows,setRows]=useState(()=>reparto.map(r=>({...r,members:[...r.members]})).sort((a,b)=>Number(b.members.some(id=>nominees.includes(id)))-Number(a.members.some(id=>nominees.includes(id)))));
+  const [rows,setRows]=useState(()=>reparto.map(r=>({...r,members:manual && !soloOnly && !r.members.some(id=>nominees.includes(id)) ? [] : [...r.members]})).sort((a,b)=>Number(b.members.some(id=>nominees.includes(id)))-Number(a.members.some(id=>nominees.includes(id)))));
   const [group,setGroup]=useState(groupSong || '');
   const [editing]=useState(manual), [step,setStep]=useState(0), [selected,setSelected]=useState(null), [error,setError]=useState('');
+  const [editPhase,setEditPhase]=useState(1);
   const listId=useId();
   const expected=reparto.flatMap(r=>r.members);
   const people=contestants.filter(c=>expected.includes(c.id));
@@ -17,7 +18,17 @@ export default function SongDistribution({reparto,groupSong,contestants,songs,ma
     if(id==null || soloOnly || nominees.includes(id) || locked(rows[i])) return;
     const capacity={solo:1,duo:2,trio:3}[rows[i].type] || 1;
     if(rows[i].members.length>=capacity && !rows[i].members.includes(id)) {setError('Ese grupo está completo. Quita primero un concursante.');return;}
-    setRows(rs=>rs.map((r,j)=>({...r,members:j===i?[...r.members.filter(x=>x!==id),id]:r.members.filter(x=>x!==id)})));setSelected(null);setError('');
+    if(rows[i].members.includes(id)) return;
+    setRows(rs=>{
+      const allowed=expected.filter(x=>x===id).length;
+      const count=rs.flatMap(r=>r.members).filter(x=>x===id).length;
+      let removed=false;
+      return rs.map((r,j)=>{
+        if(j===i) return {...r,members:[...r.members,id]};
+        if(count>=allowed && !removed && r.members.includes(id)) {removed=true;return {...r,members:r.members.filter(x=>x!==id)};}
+        return r;
+      });
+    });setSelected(null);setError('');
   }
   function move(i,d) {
     const j=i+d;
@@ -41,19 +52,26 @@ export default function SongDistribution({reparto,groupSong,contestants,songs,ma
     <h3 className="text-xl font-semibold">Reparto de temas</h3>
     <p role="alert" className="text-red-700">{error}</p>
     {editing ? <>
-      <datalist id={listId}>{songs.map(song=><option key={song} value={song} />)}</datalist>
-      {groupSong && <label className="block">Actuación grupal{search(group,setGroup)}</label>}
-      {!soloOnly && <><p className="text-sm">Arrastra cada concursante a su canción o selecciónalo y pulsa el grupo. Pulsa su nombre dentro del grupo para quitarlo.</p>
-        <div className="flex flex-wrap gap-2">{people.filter(c=>!nominees.includes(c.id)).map(c=><button key={c.id} type="button" draggable onDragStart={e=>e.dataTransfer.setData('text/plain',String(c.id))} onClick={()=>setSelected(c.id)} className={`rounded border p-1 ${selected===c.id?'bg-blue-100':''}`}><img src={c.photo || '/ot_photos/sinfoto.gif'} alt="" width="31" height="31" className="inline-block h-[31px] w-[31px] object-cover" /> {c.name}</button>)}</div></>}
-      {rows.map((r,i)=><div key={i} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();const c=people.find(c=>String(c.id)===e.dataTransfer.getData('text/plain'));assign(c?.id,i);}} className="space-y-2 rounded border p-2">
-        <div className="flex flex-wrap items-center gap-2"><strong>{i+1}.</strong><select aria-label={`Formato actuación ${i+1}`} value={r.type || 'solo'} disabled={locked(r)} onChange={e=>update(i,{type:e.target.value,members:[]})}><option value="solo">Solista</option><option value="duo">Dúo</option><option value="trio">Trío</option></select>
+      <ol className="flex flex-wrap gap-3 text-sm">{['Distribución','Concursantes','Canciones'].map((label,i)=><li key={label} aria-current={editPhase===i+1?'step':undefined} className={editPhase===i+1?'font-bold text-blue-700':''}>{i+1}. {label}</li>)}</ol>
+      {groupSong && <div className="rounded border bg-blue-50 p-3"><strong>Grupal · todos los concursantes</strong>{editPhase===3 && search(group,setGroup)}</div>}
+      {editPhase===1 && <p className="text-sm">Elige solistas, dúos y tríos. Plazas: {rows.reduce((n,r)=>n+({solo:1,duo:2,trio:3}[r.type] || 1),0)} / {expected.length}.</p>}
+      {editPhase===2 && !soloOnly && <><p className="text-sm">Arrastra una foto al grupo o selecciónala y pulsa «Colocar aquí». Pulsa una foto asignada para quitarla.</p>
+        <div className="flex flex-wrap gap-2">{people.filter(c=>!nominees.includes(c.id)).map(c=><button key={c.id} type="button" title={c.name} aria-label={`Seleccionar a ${c.name}`} draggable onDragStart={e=>e.dataTransfer.setData('text/plain',String(c.id))} onClick={()=>setSelected(c.id)} className={`rounded border p-1 ${selected===c.id?'ring-2 ring-blue-500':''}`}><img src={c.photo || '/ot_photos/sinfoto.gif'} alt={c.name} width="31" height="31" className="h-[31px] w-[31px] object-cover" /></button>)}</div></>}
+      {editPhase===3 && <datalist id={listId}>{songs.map(song=><option key={song} value={song} />)}</datalist>}
+      {rows.map((r,i)=><div key={i} onDragOver={e=>{if(editPhase===2)e.preventDefault();}} onDrop={e=>{e.preventDefault();if(editPhase!==2)return;const c=people.find(c=>String(c.id)===e.dataTransfer.getData('text/plain'));assign(c?.id,i);}} className="space-y-2 rounded border p-3">
+        <div className="flex flex-wrap items-center gap-3"><strong>{i+1}. {({solo:'Solista',duo:'Dúo',trio:'Trío'})[r.type]}{r.members.some(id=>nominees.includes(id))?' · Nominado':''}</strong>
+          {editPhase===1 && <><select aria-label={`Formato actuación ${i+1}`} value={r.type || 'solo'} disabled={locked(r)} onChange={e=>update(i,{type:e.target.value,members:[]})}><option value="solo">Solista</option><option value="duo">Dúo</option><option value="trio">Trío</option></select>
           <button type="button" aria-label="Subir actuación" onClick={()=>move(i,-1)}>↑</button><button type="button" aria-label="Bajar actuación" onClick={()=>move(i,1)}>↓</button>
-          {!locked(r) && <button type="button" onClick={()=>setRows(rows.filter((_,j)=>j!==i))}>Quitar grupo</button>}</div>
-        {search(r.song,song=>update(i,{song}))}
-        <div className="flex min-h-12 flex-wrap gap-2">{r.members.map(id=><button key={id} type="button" disabled={locked(r)} onClick={()=>update(i,{members:r.members.filter(x=>x!==id)})}><img className="inline-block h-[31px] w-[31px] object-cover" src={person(id)?.photo || '/ot_photos/sinfoto.gif'} alt="" /> {person(id)?.name}</button>)}{!locked(r) && <button type="button" className="rounded border p-2" onClick={()=>assign(selected,i)}>Añadir seleccionado aquí</button>}</div>
+          {!locked(r) && <button type="button" onClick={()=>setRows(rows.filter((_,j)=>j!==i))}>Quitar grupo</button>}</>}
+        </div>
+        {editPhase>=2 && <div className="flex min-h-12 flex-wrap gap-2">{r.members.map(id=><button key={id} type="button" title={person(id)?.name} aria-label={`Quitar a ${person(id)?.name}`} disabled={locked(r) || editPhase!==2} onClick={()=>update(i,{members:r.members.filter(x=>x!==id)})}><img className="h-[31px] w-[31px] object-cover" src={person(id)?.photo || '/ot_photos/sinfoto.gif'} alt={person(id)?.name} /></button>)}{editPhase===2 && !locked(r) && <button type="button" className="rounded border p-2" onClick={()=>assign(selected,i)}>Colocar aquí · {r.members.length}/{({solo:1,duo:2,trio:3})[r.type]}</button>}</div>}
+        {editPhase===3 && search(r.song,song=>update(i,{song}))}
       </div>)}
-      {!soloOnly && <Button variant="outline" onClick={()=>setRows([...rows,{type:'solo',members:[],song:'',valor:''}])}>Añadir actuación</Button>}
-      <Button onClick={confirm}>Confirmar reparto</Button>
+      {editPhase===1 && !soloOnly && <Button variant="outline" onClick={()=>setRows([...rows,{type:'solo',members:[],song:'',valor:''}])}>Añadir actuación</Button>}
+      <div className="flex flex-wrap gap-2">
+        {editPhase>1 && <Button variant="outline" onClick={()=>{setError('');setEditPhase(editPhase-1);}}>Atrás</Button>}
+        {editPhase<3 ? <Button onClick={()=>{const err=validateDistribution(rows,expected,nominees,soloOnly,editPhase===2);setError(err);if(err){window.alert(err);return;}setEditPhase(editPhase+1);}}>{editPhase===1?'Repartir concursantes':'Elegir canciones'}</Button> : <Button onClick={confirm}>Confirmar reparto</Button>}
+      </div>
     </> : entry && !direct ? <>
       <Motion.div key={step} initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} className="space-y-4 py-6 text-center">
         <p>{entry.group?'Empezamos con la canción grupal.':isNom?'Como nominado, ha elegido su propia canción para defender su plaza.':'Vamos con el siguiente tema de examen.'}</p>

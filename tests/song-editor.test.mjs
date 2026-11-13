@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateReparto} from '../src/lib/songEditor.js';
+import {validateReparto,validateDistribution} from '../src/lib/songEditor.js';
 import {audiencePercentages} from '../src/lib/academy.js';
 
 const songs=['Grupal','A','B','C','D'];
@@ -30,4 +30,19 @@ test('duel percentages increase gradually with popularity differences',()=>{
 test('removing an entire filled group cannot leave contestants without a song',()=>{
   const error=validateReparto(rows.slice(0,2),'Grupal',songs,['a','b','c','d','e'],['a','b']);
   assert.match(error,/Asigna a todos/);
+});
+
+test('manual steps validate capacity first, assignments second and songs last',()=>{
+  const draft=[rows[0],rows[1],{type:'trio',song:'',members:[]}];
+  const expected=['a','b','c','d','e'];
+  assert.equal(validateDistribution(draft,expected,['a','b']),'');
+  assert.ok(validateDistribution(draft,expected,['a','b'],false,true));
+  assert.ok(validateDistribution(draft.slice(0,2),expected,['a','b']));
+  assert.ok(validateDistribution([draft[2],draft[0],draft[1]],expected,['a','b']));
+  assert.ok(validateDistribution(draft,expected,[],true));
+  draft[2].members=['c','d','e'];
+  assert.equal(validateDistribution(draft,expected,['a','b'],false,true),'');
+  assert.ok(validateReparto(draft,'Grupal',songs,expected,['a','b']));
+  draft[2].song='C';
+  assert.equal(validateReparto(draft,'Grupal',songs,expected,['a','b']),'');
 });

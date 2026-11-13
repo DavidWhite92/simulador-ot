@@ -1,4 +1,5 @@
-import { describePerformance, describeGroup, performanceIncidents } from "./performanceText.js";
+import { teacherFeedback } from "./teacherFeedback.js";
+import { describePerformance, describeGroup, describeOpening, performanceIncidents } from "./performanceText.js";
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 const pick = (items, random) => items[Math.min(items.length - 1, Math.floor(random() * items.length))];
@@ -159,7 +160,7 @@ const HOUSEHOLD_GROUP = [
   [-1, 'se burlan de quienes no participan en sus bromas y provocan malestar en la casa.'],
 ];
 
-export function createAcademyEvents(contestants, reparto, pairs = [], random = Math.random) {
+export function createAcademyEvents(contestants, reparto, pairs = [], random = Math.random, songsMeta = {}) {
   const alive = contestants.filter(c => ['active', 'finalista'].includes(c.status));
   if (!alive.length) return [];
   const ids = new Set(alive.map(c => c.id));
@@ -208,6 +209,7 @@ export function createAcademyEvents(contestants, reparto, pairs = [], random = M
     events.push({ ...event, key: i });
   }
   const rehearsals = new Map();
+  const usedFeedback = new Set();
   for (const kind of ['rehearsal','mic']) for (const [index,row] of rows.entries()) {
     const bank = kind === 'mic' ? row.members.length > 1 ? MIC_CHECK : SOLO_MIC_CHECK : row.members.length > 1 ? REHEARSAL : SOLO_REHEARSAL;
     const [sign,text] = fresh(bank);
@@ -216,6 +218,10 @@ export function createAcademyEvents(contestants, reparto, pairs = [], random = M
     const evolution = kind === 'mic' ? previous > 0 ? sign > 0 ? 'El pase consolida el trabajo del ensayo. ' : 'Surgen dificultades que no habían aparecido en el ensayo. ' : sign > 0 ? 'Se aprecia una mejora respecto al ensayo. ' : 'Persisten las dificultades del ensayo. ' : '';
     const event = {kind, template:text, ids:row.members, delta:sign * (3 + Math.floor(random()*4)), song:row.song, key:events.length,
       text:`${kind === 'mic' ? 'En el pase de micros de' : 'Ensayando'} ${row.song || 'su tema'}, ${new Intl.ListFormat('es').format(row.members.map(name))} ${text}${evolution ? ' ' + evolution : ''}`};
+    const metadata=songsMeta.exact?.[row.song] || songsMeta.norm?.[normalize(row.song)] || songsMeta[row.song] || {};
+    event.isGroup=row.type==='group';
+    event.feedback=teacherFeedback({good:sign>0,kind,group:event.isGroup,dance:Number(metadata.baile || 0)},random,usedFeedback);
+    if(event.isGroup) {event.delta=0;event.positive=sign>0;event.text=`${kind==='mic'?'Pase de micros':'Ensayo'} de la grupal ${row.song}. ${sign>0?'El grupo gana seguridad y coordina mejor las voces.':'La coordinación todavía falla y hay entradas que necesitan trabajo.'} ${evolution}`;}
     events.push(event);
     if(kind === 'rehearsal') rehearsals.set(index,sign);
   }
@@ -248,7 +254,10 @@ export function createPerformances(contestants, reparto, meta = {}, judges = [],
       return { id, score, ...description, ...(c?.status === 'eliminado' ? {delta:0} : {}), judge, incident: incident?.key || null, strength: labels[best], weakness: labels[worst] };
     });
     const group = describeGroup(members, random);
-    return { song: row.song, members, group };
+    const isGroup=row.type==='group';
+    const incidents=members.filter(m=>m.incident && m.incident!=='recuperacion');
+    const groupDetail=isGroup ? `${describeOpening(members,random)}${incidents.length ? ' Durante la actuación, '+incidents.slice(0,2).map(m=>m.detail).join(' ') : ' La actuación ha llegado al final sin incidentes destacados.'}` : undefined;
+    return { song: row.song, members, group:groupDetail || group, ...(isGroup?{isGroup:true}:{}) };
   });
 }
 
