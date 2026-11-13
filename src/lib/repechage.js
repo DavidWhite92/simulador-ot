@@ -30,7 +30,7 @@ export function useRepechage({gala,gstate,setGstate,contestants,setContestants,s
     const pool=songs.filter(song=>!used.has(song));
     const available=[...(pool.length>=candidates.length ? pool : songs)];
     const reparto=candidates.map(id=>({members:[id],song:available.splice(Math.floor(Math.random()*available.length),1)[0],type:'solo'}));
-    save({phase:'crossing',crossingStep:'present',feedback:summaries[8]?.performances || {},saved,falseNominees,candidates,shown:0,performances:createPerformances(contestants,reparto,songsMeta,academy.judges),performed:0,ranking:[],revealed:0,judge:academy.judges[Math.floor(Math.random()*4)]});
+    save({phase:'crossing',crossingStep:'present',feedback:summaries[8]?.performances || {},saved,falseNominees,candidates,reparto,shown:0,performances:createPerformances(contestants,reparto,songsMeta,academy.judges),performed:0,ranking:[],revealed:0,judge:academy.judges[Math.floor(Math.random()*4)]});
     setStage('repechage');
   }
   function startReturn() {
@@ -66,7 +66,7 @@ export function useRepechage({gala,gstate,setGstate,contestants,setContestants,s
       setCarryNominees([]);
     } else if(state.phase==='announcement') {
       log('🎤 Esta noche no hay nominaciones. ¡Se abre la repesca entre los siete expulsados de la Academia!');
-      save({...state,phase:'performances'});
+      save({...state,phase:'distribution'});
     } else if(state.phase==='performances') {
       if(state.performed<state.performances.length) {
         const p=state.performances[state.performed];
@@ -105,7 +105,8 @@ export function useRepechage({gala,gstate,setGstate,contestants,setContestants,s
       setCarryNominees([]); save({...state,phase:'returnResult'});
     } else if(state.phase==='returnResult') setStage('votoPublico');
   }
-  return {state,start,startReturn,advance};
+  function setDistribution(reparto) { save({...state,reparto,phase:'performances',performances:createPerformances(contestants,reparto,songsMeta,academy.judges),performed:0}); }
+  return {state,start,startReturn,advance,setDistribution};
 }
 
 export function absentAfterElimination(c,summaries,gala) {

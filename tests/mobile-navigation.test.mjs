@@ -9,8 +9,9 @@ for(const file of ['SimuladorOT.jsx','SimuladorOT_RTVE.jsx']) {
     const start=source.indexOf('  function reiniciar(){'),end=source.indexOf('    const onDownloadRecorrido',start);
     const state={};
     const context={emptyAcademy:()=>({weeks:{},pairs:[],relationships:{}}),window:{scrollTo:()=>{state.scrolled=true;}}};
-    for(const key of ['Academy','ShowPopularity','ShowRelationships','Contestants','Gala','ViewGala','GalaLogs','CarryNominees','Stage','Gstate','Summaries']) context[`set${key}`]=v=>{state[key]=v;};
+    for(const key of ['Academy','ShowPopularity','ShowRelationships','ShowBestPerformances','Contestants','Gala','ViewGala','GalaLogs','CarryNominees','Stage','Gstate','Summaries']) context[`set${key}`]=v=>{state[key]=v;};
     vm.runInNewContext(source.slice(start,end)+'\nreiniciar();',context);
+    assert.equal(state.ShowBestPerformances,false);
     assert.equal(state.Stage,'inicio');assert.equal(state.Gala,0);
     assert.equal(state.Contestants.length,0);assert.equal(state.CarryNominees.length,0);
     assert.equal(typeof state.Gstate,'object');assert.notEqual(state.Gstate,null);

@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 export function JudgeSetup({ judges, onChange }) {
   return <section className="rounded-xl border bg-white p-2 sm:p-5 space-y-3">
     <h2 className="text-xl font-semibold">Elige los cuatro jueces</h2>
-    <p className="text-sm text-gray-600">Puedes escribir sus nombres o dejar Juez 1, Juez 2, Juez 3 y Juez 4.</p>
+    <p className="text-sm text-gray-600">Puedes escribir sus nombres o no poner nada (Saldrá Juez como defecto).</p>
     <div className="grid gap-3 sm:grid-cols-2">{judges.map((name,i) => <label key={i} className="text-sm">Juez {i+1}
       <input maxLength={60} value={name} onChange={e => onChange(judges.map((v,j) => j === i ? e.target.value : v))}
         className="mt-1 block w-full rounded-lg border p-2" placeholder={`Juez ${i+1}`} />

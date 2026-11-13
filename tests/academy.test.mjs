@@ -87,7 +87,7 @@ test('close duels permit upsets, while an enormous lead gives a dominant percent
     const close = audiencePercentages(['a','b'], [{id:'a',popularity:51},{id:'b',popularity:50}], random);
     if (close[1] > close[0]) upsets++;
     const landslide = audiencePercentages(['a','b'], [{id:'a',popularity:95},{id:'b',popularity:5}], random);
-    assert.ok(landslide[0] > 99);
+    assert.ok(landslide[0] > 92 && landslide[0] < 97);
   }
   assert.ok(upsets > 500 && upsets < 1500);
 });

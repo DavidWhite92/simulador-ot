@@ -1,3 +1,7 @@
+import BestPerformances from "./components/BestPerformances";
+import SongDistribution from "./components/SongDistribution";
+import AddSong from "./components/AddSong";
+import { customSongs } from "./lib/songEditor";
 import { contestantFlags } from "./lib/contestantStatus";
 import { currentGalaLabel } from "./lib/currentGalaLabel";
 import SplitJourneyCell from "./components/SplitJourneyCell";
@@ -891,6 +895,7 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
   useMusicBackground(!contestants.length ? mode : !academyWeek || academyWeek.phase === "events" ? mode : !academyWeek.done || stage === "galaCerrada" || (stage === "repechage" && gstate.repechage?.phase === "performances") ? null : "tension", `${mode}-${gala}`);
   const [showPopularity, setShowPopularity] = useState(false);
   const [showRelationships, setShowRelationships] = useState(false);
+  const [showBestPerformances,setShowBestPerformances] = useState(false);
   const seasonFinished = stage === "galaCerrada" && Boolean(summaries[17]?.g15?.winner || summaries[15]?.winner);
 
   const SAVE_VERSION = 1;
@@ -927,7 +932,7 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
       setContestants((payload.contestants || []).map(c => ({ ...c, popularity: c.popularity ?? 50 })));
       setAcademy(payload.academy || { ...emptyAcademy(), judges: ["Juez 1", "Juez 2", "Juez 3", "Juez 4"], weeks: { [payload.gala ?? 1]: { done: true } } });
       setShowPopularity(false);
-      setShowRelationships(false);
+      setShowRelationships(false); setShowBestPerformances(false);
       setPopularityEnabled(payload.popularityEnabled !== false);
       setRelationshipsEnabled(payload.relationshipsEnabled !== false);
       setRepechageOption(payload.repechageOption || (payload.academy?.repechageEnabled === false ? "off" : "on"));
@@ -1056,7 +1061,7 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
         .then(r => r.text())
         .then(t => {
           const lines = t.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-          setSongs(lines);
+          setSongs([...new Set([...lines,...customSongs().map(s=>s.title)])]);
           setSongsReady(true);
           console.log("[Canciones] cargadas:", lines.length);
         })
@@ -1081,7 +1086,7 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
 
             const exact = {};
             const norm  = {};
-            (list || []).forEach(x => {
+            [...(list || []),...customSongs()].forEach(x => {
               if (!x?.title) return;
               const tExact = x.title.trim();
               const tNorm  = normalize(x.title);
@@ -1272,7 +1277,7 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
     try {
       setAcademy(a => ({ ...a, repechageEnabled: resolveRepechage(repechageOption), judges: judgeNames.map((n,i) => n.trim() || `Juez ${i+1}`), weeks: {}, pairs: [], relationships: {} }));
       setShowPopularity(false);
-      setShowRelationships(false);
+      setShowRelationships(false); setShowBestPerformances(false);
       setContestants(inits);
       setGala(0);
       setViewGala(0); // 👈 asegura que ves la Gala 0 en el historial
@@ -1340,7 +1345,7 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
   function reiniciar(){
     setAcademy(emptyAcademy());
     setShowPopularity(false);
-      setShowRelationships(false);
+      setShowRelationships(false); setShowBestPerformances(false);
     setContestants([]);
     setGala(0);
     setViewGala(0);
@@ -1353,7 +1358,7 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
   }
 
     const onDownloadRecorrido = async () => {
-      const node = document.getElementById(showRelationships ? "relaciones-capture" : showPopularity ? "popularidad-capture" : "recorrido-capture");
+      const node = document.getElementById(showBestPerformances ? "actuaciones-capture" : showRelationships ? "relaciones-capture" : showPopularity ? "popularidad-capture" : "recorrido-capture");
       if (!node) {
         alert("No se encontró la tabla activa 😕");
         return;
@@ -1397,7 +1402,7 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
         });
 
         const link = document.createElement("a");
-        link.download = `${showRelationships ? "relaciones" : showPopularity ? "popularidad" : "recorrido"}.png`;
+        link.download = `${showBestPerformances ? "mejores-actuaciones" : showRelationships ? "relaciones" : showPopularity ? "popularidad" : "recorrido"}.png`;
         link.href = dataUrl;
         link.click();
       } catch (err) {
@@ -2407,7 +2412,7 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
       if (manual) {
         // (opcional) evitar que sea imposible llegar a 4 nominados
 
-        const choice = pickManually(
+        const choice = remaining <= needed ? "nominado" : needed <= 0 ? "salvado" : pickManually(
           manualJuryOptions(remaining, needed), // reserva un salvado y un nominado para el final
           false,
           x => x
@@ -3820,6 +3825,7 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
         <Card>
           <JudgeSetup judges={judgeNames} onChange={setJudgeNames} />
           <OTRosterPicker roster={roster} onChange={updateRoster} onStart={iniciar} />
+          <AddSong onAdd={song=>{setSongs(old=>[...new Set([...old,song.title])]);setSongsMeta(old=>({...old,exact:{...old.exact,[song.title]:song}}));}} />
         </Card>
       )}
       <SeasonSettings repechageOption={repechageOption} setRepechageOption={setRepechageOption} relationshipsEnabled={relationshipsEnabled} setRelationshipsEnabled={setRelationshipsEnabled} popularityEnabled={popularityEnabled} setPopularityEnabled={setPopularityEnabled} manual={manual} setManual={setManual} mode={mode}
@@ -3870,7 +3876,8 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
 
 
       {academyBlocked && academyChat && <ChatReveal chat={academyChat} contestants={contestants} gala={shownGala(chatGala)} onNext={nextChat} onSkip={skipChat} />}
-      {academyBlocked && !academyChat && <AcademyWeek week={academyWeek} reparto={academyReparto} groupSong={summaries[gala]?.[gala]?.groupSong}
+      {academyBlocked && !academyChat && !academyWeek && academyReparto.length>0 && !summaries[gala]?.distributionReady && <SongDistribution key={`distribution-${gala}`} reparto={academyReparto} groupSong={summaries[gala]?.[gala]?.groupSong} contestants={contestants} songs={songs} manual={manual} nominees={carryNominees.filter(id=>academyReparto.some(row=>row.members.includes(id)))} soloOnly={gala===0} direct={gala===0} onConfirm={(reparto,groupSong)=>setSummaries(s=>({...s,[gala]:{...s[gala],distributionReady:true,[gala]:{...s[gala]?.[gala],reparto,groupSong}}}))} />}
+      {academyBlocked && !academyChat && (academyWeek || summaries[gala]?.distributionReady) && <AcademyWeek week={academyWeek} reparto={academyReparto} groupSong={summaries[gala]?.[gala]?.groupSong}
         contestants={contestants} gala={shownGala(gala)} onNext={advanceAcademy} onSkip={skipPerformances} onSkipEvents={skipEvents} />}
       {!academyBlocked && contestants.length > 0 && <AcademySummary week={academy.weeks[viewGala]} contestants={contestants} />}
       {contestants.length>0 && !academyBlocked && (
@@ -4120,7 +4127,7 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
                       onNext={stage === "g0_eval" ? () => g0_revealNext(false) : stage === "g0_profes" ? g0_profesSalvan : g0_publicoVota}
                       onRevealAll={() => g0_revealNext(true)} />
                   ) : stage === "repechage" && repechage.state && viewGala === gala ? (
-                    <RepechageReveal state={repechage.state} contestants={contestants} favoriteId={gstate.favoritoId} onNext={repechage.advance} />
+                    <RepechageReveal songs={songs} manual={manual} onDistribution={repechage.setDistribution} state={repechage.state} contestants={contestants} favoriteId={gstate.favoritoId} onNext={repechage.advance} />
                   ) : stage === "publicReveal" && gstate.publicReveal && viewGala === gala ? (
                     <PublicReveal reveal={gstate.publicReveal} contestants={contestants} manual={manual}
                       duelResult={summaries[gala]?.g12_14?.duel} onSelect={selectPublicIdentity} onNext={advancePublicReveal} />
@@ -4334,21 +4341,22 @@ export default function SimuladorOT_RTVE({ repechageOption, setRepechageOption, 
         <Card>
           <CardContent className="min-w-0 p-2 sm:p-6 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-xl font-semibold">{showRelationships ? "Tabla de Relaciones" : showPopularity ? "Tabla de Popularidad" : "Recorrido del concurso"}</h2>
+              <h2 className="text-xl font-semibold">{showBestPerformances ? "Top 10 de mejores actuaciones" : showRelationships ? "Tabla de Relaciones" : showPopularity ? "Tabla de Popularidad" : "Recorrido del concurso"}</h2>
               {seasonFinished && <label className="w-full text-sm sm:hidden">Tabla
-                <select aria-label="Elegir tabla" className="mt-1 w-full rounded-lg border p-2" value={showRelationships?'relationships':showPopularity?'popularity':'journey'} onChange={e=>{setShowRelationships(e.target.value==='relationships');setShowPopularity(e.target.value==='popularity');}}>
-                  <option value="journey">Recorrido</option><option value="popularity">Popularidad</option><option value="relationships">Relaciones</option>
+                <select aria-label="Elegir tabla" className="mt-1 w-full rounded-lg border p-2" value={showBestPerformances?'performances':showRelationships?'relationships':showPopularity?'popularity':'journey'} onChange={e=>{setShowBestPerformances(e.target.value==='performances');setShowRelationships(e.target.value==='relationships');setShowPopularity(e.target.value==='popularity');}}>
+                  <option value="journey">Recorrido</option><option value="popularity">Popularidad</option><option value="relationships">Relaciones</option><option value="performances">Top 10 actuaciones</option>
                 </select>
               </label>}
-              {seasonFinished && <Button className="hidden sm:inline-flex" variant="outline" onClick={() => { setShowRelationships(false); setShowPopularity(v => !v); }}>{showPopularity ? "Ver recorrido" : "Tabla de Popularidad"}</Button>}
-              {seasonFinished && <Button className="hidden sm:inline-flex" variant="outline" onClick={() => { setShowPopularity(false); setShowRelationships(v => !v); }}>{showRelationships ? "Ver recorrido" : "Tabla de Relaciones"}</Button>}
+              {seasonFinished && <Button className="hidden sm:inline-flex" variant="outline" onClick={() => { setShowRelationships(false); setShowBestPerformances(false); setShowPopularity(v => !v); }}>{showPopularity ? "Ver recorrido" : "Tabla de Popularidad"}</Button>}
+              {seasonFinished && <Button className="hidden sm:inline-flex" variant="outline" onClick={() => { setShowBestPerformances(false); setShowPopularity(false); setShowRelationships(v => !v); }}>{showRelationships ? "Ver recorrido" : "Tabla de Relaciones"}</Button>}
+              {seasonFinished && <Button className="hidden sm:inline-flex" variant="outline" onClick={()=>{setShowRelationships(false);setShowPopularity(false);setShowBestPerformances(v=>!v);}}>{showBestPerformances ? "Ver recorrido" : "Top 10 actuaciones"}</Button>}
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="secondary" onClick={onDownloadRecorrido}>
                   ⬇️ Descargar tabla
                 </Button>
               </div>
             </div>
-            {showRelationships && seasonFinished ? <RelationshipsTable repechageEnabled={repechageEnabled} contestants={contestants} summaries={summaries} relations={academy.relationships} pairs={academy.pairs} /> : showPopularity && seasonFinished ? <PopularityTable repechageEnabled={repechageEnabled} contestants={contestants} summaries={summaries} /> : <RecorridoTable repechageEnabled={tableRepechageEnabled} contestants={contestants} summaries={summaries} />}
+            {showBestPerformances && seasonFinished ? <BestPerformances weeks={academy.weeks} summaries={summaries} contestants={contestants} repechageEnabled={repechageEnabled} /> : showRelationships && seasonFinished ? <RelationshipsTable repechageEnabled={repechageEnabled} contestants={contestants} summaries={summaries} relations={academy.relationships} pairs={academy.pairs} /> : showPopularity && seasonFinished ? <PopularityTable repechageEnabled={repechageEnabled} contestants={contestants} summaries={summaries} /> : <RecorridoTable repechageEnabled={tableRepechageEnabled} contestants={contestants} summaries={summaries} />}
           </CardContent>
         </Card>
       )}

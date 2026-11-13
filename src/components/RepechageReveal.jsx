@@ -1,9 +1,10 @@
+import SongDistribution from "./SongDistribution";
 import { motion as Motion, useReducedMotion } from 'framer-motion';
 import { Button } from './ui/button';
 import JuryCatwalk from './JuryCatwalk';
 import { useMusicCue } from '../lib/audio';
 
-export default function RepechageReveal({state,contestants,favoriteId,onNext}) {
+export default function RepechageReveal({state,contestants,favoriteId,onNext,songs,manual,onDistribution}) {
   const reduced=useReducedMotion();
   const person=id=>contestants.find(c=>c.id===id);
   const {phase}=state;
@@ -15,6 +16,7 @@ export default function RepechageReveal({state,contestants,favoriteId,onNext}) {
   useMusicCue((crossing && state.crossingStep==='result') || returned || phase==='announcement' || (entry && state.ranking.indexOf(entry)<2) ? 'victory' : null,`${phase}-${state.shown}-${state.revealed}`);
   const photo=id=><img src={person(id)?.photo || '/ot_photos/sinfoto.gif'} alt={person(id)?.name} className="mx-auto h-[62px] w-[62px] rounded object-cover" />;
   const label=phase==='crossing' ? state.crossingStep==='result' ? state.shown<state.saved.length ? 'Siguiente concursante' : 'Escuchar al jurado' : state.crossingStep==='comment' ? 'Revelar decisión' : 'Revelar valoración' : phase==='surprise' ? 'Revelar la sorpresa' : phase==='announcement' ? 'Ver actuaciones de repesca' : phase==='performances' ? state.performed<state.performances.length ? 'Ver siguiente actuación' : 'Abrir votación de repesca' : phase==='percentages' ? state.revealed<state.ranking.length ? 'Revelar siguiente porcentaje' : 'Terminar Gala 8' : phase==='returnIntro' ? 'Revelar porcentaje' : phase==='returnPercentage' ? 'Revelar quién vuelve' : 'Continuar con la gala';
+  if(phase==='distribution') return <SongDistribution reparto={state.reparto || state.performances.map(p=>({song:p.song,members:p.members.map(m=>m.id),type:'solo'}))} contestants={contestants} songs={songs} manual={manual} soloOnly onConfirm={onDistribution} />;
   return <section className="space-y-4 rounded-xl border bg-white p-2 sm:p-5 text-center" aria-live="polite">
     <h3 className="text-xl font-bold">{phase==='crossing' || phase==='surprise' ? 'La decisión del jurado' : 'Repesca'}</h3>
     <Motion.div key={`${phase}-${state.shown}-${state.performed}-${state.revealed}`} initial={{opacity:0,y:reduced?0:15}} animate={{opacity:1,y:0}} className="space-y-3">

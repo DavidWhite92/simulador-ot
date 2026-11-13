@@ -25,7 +25,13 @@ for(const manual of [false,true]) test(`G8 surprise, seven candidates and G9 ret
   render().advance(); assert.equal(a.summaries[8].finalNominees.length,0);
   // Reload midway through the special gala.
   a.gstate.repechage=JSON.parse(JSON.stringify(a.gstate.repechage));
-  for(let i=0;i<30 && a.stage!=='galaCerrada';i++) render().advance();
+  for(let i=0;i<30 && a.stage!=='galaCerrada';i++) {
+    if(a.gstate.repechage.phase==='distribution') {
+      const rows=a.gstate.repechage.reparto.map((r,j)=>({...r,song:`Tema ${30+j}`}));
+      render().setDistribution(rows);
+      assert.equal(a.gstate.repechage.performances[0].song,'Tema 30');
+    } else render().advance();
+  }
   assert.equal(a.stage,'galaCerrada');
   assert.equal(a.summaries[8].repechage.selected.length,2);
   assert.equal(a.summaries[8].repechage.ranking.length,7);

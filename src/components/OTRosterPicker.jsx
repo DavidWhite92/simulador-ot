@@ -4,6 +4,8 @@ import { Card, CardContent } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { readCustomPhoto } from "../lib/customPhoto";
+import { Filter } from 'lucide-react';
+import { randomRosterCandidates } from '../lib/rosterRandom';
 
 // ======================= UTILS ========================
 const slugify = (s) =>
@@ -95,6 +97,16 @@ export default function OTRosterPicker({
     onChange(ids.map(id => pool.find(p => String(p.id) === id) || roster.find(p => String(p.id) === id)).filter(Boolean));
   };
   const [q, setQ] = useState(""); // búsqueda
+  const [showRandomFilter,setShowRandomFilter] = useState(false);
+  const [excludedEditions,setExcludedEditions] = useState(()=>{
+    try {const saved=JSON.parse(localStorage.getItem('ot_random_excluded_editions') || '[]');return Array.isArray(saved)?saved:[];} catch {return [];}
+  });
+  const [randomMessage,setRandomMessage] = useState('');
+  function toggleRandomEdition(edition) {
+    const next=excludedEditions.includes(edition)?excludedEditions.filter(e=>e!==edition):[...excludedEditions,edition];
+    setExcludedEditions(next);setRandomMessage('');
+    try {localStorage.setItem('ot_random_excluded_editions',JSON.stringify(next));} catch { /* Keep the filter for this session. */ }
+  }
 
   // Creador custom
   const [showCreator, setShowCreator] = useState(false);
@@ -172,8 +184,9 @@ export default function OTRosterPicker({
   // --- Selección aleatoria ---
   const handleRandomPick = () => {
     if (sel.length >= max) return; // ya estás al tope
-    const available = pool.filter((p) => !sel.includes(String(p.id)));
-    if (available.length === 0) return; // no quedan libres
+    const available = randomRosterCandidates(pool,sel,excludedEditions);
+    if (available.length === 0) {setRandomMessage('No quedan concursantes disponibles en las temporadas activadas.');return;}
+    setRandomMessage('');
     const pick = available[Math.floor(Math.random() * available.length)];
     toggle(pick.id);
   };
@@ -353,7 +366,10 @@ export default function OTRosterPicker({
         <Button type="button" onClick={handleRandomPick}>
           Elige al azar
         </Button>
+        <Button type="button" variant="outline" aria-label="Filtrar temporadas para la selección aleatoria" title="Filtrar temporadas" aria-expanded={showRandomFilter} aria-controls="random-season-filter" onClick={()=>setShowRandomFilter(!showRandomFilter)} className={`shrink-0 px-2 ${excludedEditions.length?'bg-blue-100':''}`}><Filter size={18} /></Button>
       </div>
+      {showRandomFilter && <fieldset id="random-season-filter" className="rounded-lg border bg-white p-3"><legend className="px-1 font-semibold">Temporadas para elegir al azar</legend><div className="flex flex-wrap gap-x-5 gap-y-2">{editions.keys.map(edition=><label key={edition} className="flex items-center gap-2"><input type="checkbox" checked={!excludedEditions.includes(edition)} onChange={()=>toggleRandomEdition(edition)} />{edition}</label>)}</div></fieldset>}
+      {randomMessage && <p role="status" className="text-sm text-amber-800">{randomMessage}</p>}
 
       <div className="flex flex-wrap items-center gap-2">
         <Button onClick={onStart}>▶️ Iniciar</Button>

@@ -110,3 +110,12 @@ test('blind percentages can appear in either order without changing their values
   assert.deepEqual(blindDuelPercentages(61.25, 38.75, () => 0.1), [61.25, 38.75]);
   assert.deepEqual(blindDuelPercentages(61.25, 38.75, () => 0.9), [38.75, 61.25]);
 });
+
+for (const file of ['SimuladorOT.jsx','SimuladorOT_RTVE.jsx']) test(`${file}: manual final contestant must fill the fourth nomination even if save is requested`,()=>{
+  const {step,initial}=juryHarness(file,9,true,()=> 'salvado');
+  initial.gstate={...initial.gstate,evaluacionOrden:['c10','c11'],currentEvaluadoId:'c10',nominados:['c1','c2','c3'],salvados:new Set(['c0','c4','c5','c6','c7','c8','c9']),evalResults:Array.from({length:9},(_,i)=>({id:`c${i+1}`,result:i<3?'nominado':'salvado'}))};
+  const state=runJuryReveal(step,initial,9,true);
+  assert.equal(state.stage,'profesSalvan');
+  assert.deepEqual([...state.gstate.nominados],['c1','c2','c3','c11']);
+  assert.equal(state.gstate.evalResults.at(-2).result,'salvado');
+});

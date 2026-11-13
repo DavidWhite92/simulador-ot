@@ -10,7 +10,7 @@ export function audiencePercentages(ids, contestants, random = Math.random, vola
   const weights = ids.map(id => {
     if (!popularityEnabled) return 0.05 + random();
     const pop = popularityOf(contestants.find(c => String(c.id) === String(id)));
-    return Math.exp((pop - 50 + (random() * 2 - 1) * volatility) / 16);
+    return Math.exp((pop - 50 + (random() * 2 - 1) * volatility) / 32);
   });
   const total = weights.reduce((a, b) => a + b, 0);
   const exact = weights.map(w => w / total * 10000);
