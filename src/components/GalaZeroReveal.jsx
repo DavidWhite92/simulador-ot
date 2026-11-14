@@ -1,3 +1,4 @@
+import {StaffBadge} from "./StaffSetup";
 import { useMusicCue } from "../lib/audio";
 import { motion as Motion, useReducedMotion } from "framer-motion";
 import { Button } from "./ui/button";
@@ -25,7 +26,7 @@ export default function GalaZeroReveal({ stage, reveal, state, contestants, perf
       initial={{ opacity: 0, y: reduced ? 0 : 25 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduced ? 0 : 0.3 }}
       className="flex min-h-64 flex-col items-center justify-center gap-4">
       {jury ? event ? <>
-        {feedback && <h3 className="text-lg font-bold">{feedback.judge}</h3>}
+        {feedback && <h3 className="text-lg font-bold"><StaffBadge name={feedback.judge} /></h3>}
         {photo(event.id)}<p className="text-xl font-semibold">{person(event.id)?.name}, {feedback ? 'quiero hablar contigo. Ponte en pie.' : 'en pie.'}</p>
         {feedback && reveal.phase !== 'present' && <p className="max-w-2xl">{feedback.critique}</p>}
         <p className={`text-lg font-bold ${result ? event.doubt ? "text-orange-600" : "text-green-700" : "text-gray-500"}`}>

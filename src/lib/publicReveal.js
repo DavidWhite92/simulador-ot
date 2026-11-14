@@ -1,8 +1,16 @@
-export function createPublicReveal(entries, kind, phase = 2) {
+export function createPublicReveal(entries, kind, phase = 2, random=Math.random) {
   const ordered = entries.map(entry => ({ ...entry })).sort((a, b) => b.pct - a.pct);
+  let targets=phase === 1 ? [4,3] : [2,0];
+  if(kind==='duel' && ordered.length>=3) {
+    const shuffle=items=>{const result=[...items];for(let i=result.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[result[i],result[j]]=[result[j],result[i]];}return result;};
+    const safe=shuffle(ordered.map((_,i)=>i).slice(0,-2));
+    const bottom=shuffle([ordered.length-2,ordered.length-1]);
+    targets=[...shuffle([...safe.slice(1),bottom[0]]),...shuffle([safe[0],bottom[1]])];
+  }
+  if(kind==='duel' && ordered.length<3) targets=ordered.map((_,i)=>i);
   return {
     kind, phase, entries: ordered, visible: [], cursor: 0, screen: "announce", selectedId: "",
-    targets: kind === "duel" ? ordered.map((_, i) => i) : phase === 1 ? [4, 3] : [2, 0],
+    targets,
   };
 }
 

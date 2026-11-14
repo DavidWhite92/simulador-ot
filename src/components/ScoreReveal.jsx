@@ -1,3 +1,4 @@
+import { StaffBadge } from "./StaffSetup";
 import { useMusicCue } from "../lib/audio";
 import { motion as Motion, useReducedMotion } from "framer-motion";
 import { Button } from "./ui/button";
@@ -28,7 +29,7 @@ export default function ScoreReveal({ reveal, contestants, judges = [], onNext, 
           <img src={person(finalist)?.photo || "/ot_photos/sinfoto.gif"} alt={person(finalist)?.name} className="mx-auto h-[62px] w-[62px] rounded-xl object-cover" />
           <p className="text-xl font-bold">{person(finalist)?.name}</p><p>¡Cruza la pasarela!</p>
         </Motion.div> : event ? <Motion.div key={reveal.shown} initial={{ opacity: 0, y: reduced ? 0 : 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-          <h3 className="text-xl font-semibold">{judges[event.judge] || `Juez ${event.judge + 1}`}</h3>
+          <h3 className="text-xl font-semibold"><StaffBadge name={judges[event.judge] || `Juez ${event.judge + 1}`} /></h3>
           <img src={person(event.id)?.photo || "/ot_photos/sinfoto.gif"} alt={person(event.id)?.name} className="mx-auto h-[62px] w-[62px] rounded-xl object-cover" />
           <p className="font-semibold">{person(event.id)?.name}</p><p className="text-5xl font-bold">{event.score.toFixed(1)}</p>
         </Motion.div> : <p>El jurado va a dar sus notas.</p>}

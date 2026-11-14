@@ -1,3 +1,4 @@
+import {secondChance,favoriteComment} from '../src/lib/juryComments.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -10,7 +11,7 @@ for (const file of ['SimuladorOT.jsx', 'SimuladorOT_RTVE.jsx']) {
       const source = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
       const body = source.slice(source.indexOf('    function iniciarVotoPublico()'), source.indexOf('    function evaluarSiguientePorJurado('));
       const logs = [];
-      const context = vm.createContext({ popularityEnabled: true,
+      const context = vm.createContext({secondChance,favoriteComment, popularityEnabled: true,
         favoriteRanking, manual, gala: 2, stage: 'votoPublico',
         contestants: Array.from({ length: 5 }, (_, i) => ({ id: `c${i}`, status: 'active', popularity: [95,90,80,70,20][i] })),
         gstate: { salvados: new Set(), top3Ban: new Set() }, summaries: { 1: { finalNominees: ['c0','c4'] }, 2: { duel: { winner: 'c0' } } },

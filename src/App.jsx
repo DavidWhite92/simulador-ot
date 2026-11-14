@@ -1,3 +1,5 @@
+import { StaffContext } from "./lib/StaffContext";
+import {defaultStaff} from "./lib/staff";
 // App.jsx
 import React, { useState } from "react";
 import SimuladorOT from "./SimuladorOT";
@@ -6,6 +8,7 @@ import SimuladorOT_RTVE from "./SimuladorOT_RTVE";
 import MusicControl from "./components/MusicControl";
 
 export default function App() {
+  const [staff,setStaff] = useState(defaultStaff);
   const [judgeNames, setJudgeNames] = useState(['', '', '', '']);
   const [repechageOption,setRepechageOption] = useState('off');
   const [mode, setMode] = useState("telecinco");
@@ -19,13 +22,16 @@ export default function App() {
     if (!payload || payload.v !== 1) throw new Error("Versión de guardado incompatible");
     if (payload.mode && !["telecinco", "rtve"].includes(payload.mode)) throw new Error("Formato de temporada desconocido");
     setLoadedSeason(payload);
+    setStaff(payload.academy?.staff || defaultStaff);
+    if(payload.academy?.judges) setJudgeNames(payload.academy.judges);
     setMode(payload.mode || mode);
   };
-  const shared = { repechageOption, setRepechageOption, judgeNames, setJudgeNames, mode, onModeChange: setMode, roster, setRoster, manual, setManual, popularityEnabled, setPopularityEnabled, relationshipsEnabled, setRelationshipsEnabled, loadedSeason, onLoadSeason, onLoadedSeason: () => setLoadedSeason(null) };
+  const shared = { staff, setStaff, repechageOption, setRepechageOption, judgeNames, setJudgeNames, mode, onModeChange: setMode, roster, setRoster, manual, setManual, popularityEnabled, setPopularityEnabled, relationshipsEnabled, setRelationshipsEnabled, loadedSeason, onLoadSeason, onLoadedSeason: () => setLoadedSeason(null) };
 
   return (
     <div className="min-h-screen bg-white/60">
       <MusicControl />
+      <StaffContext.Provider value={{...staff,judges:staff.judges.map((person,i)=>({...person,name:judgeNames[i]?.trim() || `Juez ${i+1}`}))}}>
       <div className="w-full min-w-0 px-1 sm:px-6 lg:px-12">
         {mode === "telecinco" ? (
           <SimuladorOT {...shared} />
@@ -33,6 +39,7 @@ export default function App() {
           <SimuladorOT_RTVE {...shared} />
         )}
       </div>
+      </StaffContext.Provider>
     </div>
   );
 }

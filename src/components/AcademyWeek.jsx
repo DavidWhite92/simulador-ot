@@ -1,3 +1,4 @@
+import { StaffBadge } from "./StaffSetup";
 import { motion as Motion, useReducedMotion } from 'framer-motion';
 import { Button } from './ui/button';
 
@@ -45,7 +46,7 @@ export default function AcademyWeek({ week, reparto, groupSong, contestants, gal
         <p className="text-sm text-gray-500">Momento {blockShown} de {blockEvents.length} · {event.kind === 'romance' ? '♥ Relaciones' : event.kind === 'mic' ? 'Pase de micros' : event.kind === 'rehearsal' ? 'Ensayos' : 'Convivencia'}</p>
         <div className="flex flex-wrap justify-center gap-5">{!event.isGroup && event.ids.map(id => <div key={id} className="text-center"><img src={person(id)?.photo || '/ot_photos/sinfoto.gif'} alt={person(id)?.name} className="mx-auto h-[62px] w-[62px] rounded-xl object-cover" /><p>{person(id)?.name}</p></div>)}</div>
         <p className="border-l-4 p-3 text-center text-lg" style={{borderColor:(event.positive ?? event.delta >= 0) ? "#16a34a" : "#dc2626"}}>{event.text}</p>
-        {event.feedback?.map((comment,i)=><blockquote key={i} className="rounded-xl bg-slate-50 p-3"><strong>{comment.teacher}:</strong> «{comment.text}»</blockquote>)}
+        {event.feedback?.map((comment,i)=><blockquote key={i} className="rounded-xl bg-slate-50 p-3"><StaffBadge name={comment.teacher} photo={comment.photo} />: «{comment.text}»</blockquote>)}
       </> : <p className="py-16 text-center">Las cámaras de Academia 24h ya están encendidas…</p>}
     </Motion.div>}
     <div className="flex flex-wrap gap-2"><Button onClick={onNext} disabled={!reparto.length}>{!week ? gala === 0 ? 'Comenzar las actuaciones' : 'Comenzar Academia 24h' : performing ? week.performed < week.performances.length ? 'Ver siguiente actuación' : 'Continuar con la gala' : week.shown < week.events.length ? event && eventBlock(week.events[week.shown]) !== block ? `Pasar a ${eventBlock(week.events[week.shown]).toLowerCase()}` : 'Ver siguiente evento' : 'Comenzar las actuaciones'}</Button>
@@ -57,7 +58,7 @@ export default function AcademyWeek({ week, reparto, groupSong, contestants, gal
 export function AcademySummary({ week }) {
   if (!week?.done || !week.events) return null;
   return <details className="rounded-xl border bg-white p-4"><summary className="cursor-pointer font-semibold">Resumen de Academia 24h y actuaciones</summary>
-    <div className="mt-3 space-y-3">{week.events.map((event,i) => <p key={i} className="border-l-4 pl-3" style={{borderColor:(event.positive ?? event.delta >= 0) ? "#16a34a" : "#dc2626"}}>{event.text}{event.feedback?.map((comment,j)=><span key={j} className="mt-1 block"><strong>{comment.teacher}:</strong> «{comment.text}»</span>)}</p>)}
+    <div className="mt-3 space-y-3">{week.events.map((event,i) => <p key={i} className="border-l-4 pl-3" style={{borderColor:(event.positive ?? event.delta >= 0) ? "#16a34a" : "#dc2626"}}>{event.text}{event.feedback?.map((comment,j)=><span key={j} className="mt-1 block"><StaffBadge name={comment.teacher} photo={comment.photo} />: «{comment.text}»</span>)}</p>)}
       {week.performances.map((p,i) => <div key={i}><p className="font-semibold">{p.isGroup?'Grupal: ':''}{p.song}</p>{!p.isGroup && p.members.map(m => <p key={m.id}>{m.detail}</p>)}{p.group && <p>{p.group}</p>}</div>)}
       {week.chatDone && week.chat && <div className="space-y-2"><h3 className="font-semibold">El Chat</h3>{week.chat.events.map((event,i) => <p key={i} className="border-l-4 pl-3" style={{borderColor:(event.positive ?? event.delta >= 0) ? "#16a34a" : "#dc2626"}}>{event.text}</p>)}</div>}
     </div></details>;

@@ -79,12 +79,10 @@ export default function SongDistribution({reparto,groupSong,contestants,songs,ma
         {phase===1 && !entry.group && <p>Y {entry.members.length===1?'la va a cantar…':'la van a cantar…'}</p>}
         {phase===2 && (entry.group?<p>¡La cantáis todos!</p>:<div className="flex flex-wrap justify-center gap-4">{entry.members.map(id=><div key={id}><img className="mx-auto h-[62px] w-[62px] object-cover rounded" src={person(id)?.photo || '/ot_photos/sinfoto.gif'} alt="" /><p>{person(id)?.name}</p></div>)}</div>)}
       </Motion.div>
-      <Button onClick={()=>setStep(step+1)}>{phase===0?'Revelar canción':phase===1?entry.group?'Continuar':'Revelar concursantes':'Siguiente tema'}</Button>
+      <Button onClick={()=>{if(step+1>=entries.length*3)confirm();else setStep(step+1);}}>{phase===0?'Revelar canción':phase===1?entry.group?'Continuar':'Revelar concursantes':'Siguiente tema'}</Button>
       <Button variant="outline" onClick={confirm}>Revelar reparto</Button>
     </> : <>
-      {group && <p className="font-semibold">Actuación grupal: {group}</p>}
-      <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th>Concursantes</th><th>Canción</th></tr></thead><tbody>{rows.map((row,i)=><tr key={i} className="border-t"><td className="p-2"><div className="flex flex-wrap gap-2">{row.members.map(id=><span key={id}><img src={person(id)?.photo || '/ot_photos/sinfoto.gif'} alt="" className="inline-block h-[31px] w-[31px] object-cover" /> {person(id)?.name}</span>)}</div></td><td>{row.song}</td></tr>)}</tbody></table></div>
-      <Button onClick={confirm}>Continuar</Button>
+      <Button onClick={confirm}>Ver reparto completo</Button>
     </>}
   </section>;
 }

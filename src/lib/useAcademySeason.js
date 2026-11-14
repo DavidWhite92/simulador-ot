@@ -25,7 +25,7 @@ export function useAcademySeason({ contestants, setContestants, summaries, setSu
   function next() {
     if (!week) {
       saveWeek({ phase: gala === 0 ? 'performances' : 'events', shown: 0,
-        events: gala === 0 ? [] : createAcademyEvents(contestants, galaReparto, academy.pairs, undefined, songsMeta),
+        events: gala === 0 ? [] : createAcademyEvents(contestants, galaReparto, academy.pairs, undefined, songsMeta, academy.staff),
         performances: gala === 0 ? createPerformances(contestants, galaReparto, songsMeta, academy.judges) : [], performed: 0 });
       return;
     }

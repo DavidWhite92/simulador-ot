@@ -1,3 +1,4 @@
+import {secondChance,favoriteComment} from '../src/lib/juryComments.js';
 import { selectPerformanceNominees, mixedJuryOrder, manualJuryOptions } from '../src/lib/juryPerformance.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,7 +11,7 @@ function juryHarness(file, gala, manual = false, choose = () => null) {
   const source = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
   const body = source.slice(source.indexOf('    function evaluarSiguientePorJurado('), source.indexOf('    function profesoresSalvanUno('));
   const contestants = Array.from({ length: 12 }, (_, i) => ({ id: `c${i}`, name: `Name ${i}`, gender: i % 2 ? 'm' : 'f', status: 'active' }));
-  const context = vm.createContext({ selectPerformanceNominees, mixedJuryOrder, manualJuryOptions, performanceNominationModifier,
+  const context = vm.createContext({secondChance,favoriteComment, selectPerformanceNominees, mixedJuryOrder, manualJuryOptions, performanceNominationModifier,
     contestants, gala, manual, pickManually: choose, nameOf: id => id, runJuryReveal, setViewGala() {},
     buildValoracionesOrder: ids => ids, getSongFor: () => null, songsMeta: {},
     performanceModifier: () => 0, BASE_NOM_PROB: 0.5, PUBLIC_WEIGHT: 0,

@@ -1,8 +1,10 @@
+import {favoriteComment} from "../lib/juryComments";
+import {StaffBadge} from "./StaffSetup";
 import { Button } from "./ui/button";
 import { useMusicCue } from "../lib/audio";
 import { motion as Motion, useReducedMotion } from "framer-motion";
 
-export default function FavoriteReveal({ state, contestants, onContinue }) {
+export default function FavoriteReveal({ state, contestants, performances={}, onContinue }) {
   const reduceMotion = useReducedMotion();
   const order = state.top3RandomOrder || state.top3 || [];
   const count = state.top3RevealCount ?? (state.top3NamesRevealed ? 3 : 0);
@@ -31,6 +33,8 @@ export default function FavoriteReveal({ state, contestants, onContinue }) {
             <img src={favorite.photo || "/ot_photos/sinfoto.gif"} alt={favorite.name} className="h-[62px] w-[62px] rounded-xl object-cover ring-4 ring-blue-400" />
             <p className="text-xl font-bold">{favorite.name}</p>
             <p className="text-sm">Se libra de la nominación del jurado.</p>
+            {performances[favorite.id]?.judge && <StaffBadge name={performances[favorite.id].judge} />}
+            <p>{favoriteComment(performances[favorite.id])}</p>
           </Motion.div>
         ) : <p className="text-sm text-gray-500">{count < 3 ? "Los nombres aparecen en orden aleatorio, sin indicar su posición." : "Entre estos tres está el favorito de la semana…"}</p>}
       </div>

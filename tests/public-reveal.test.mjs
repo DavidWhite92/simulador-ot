@@ -1,3 +1,5 @@
+import {prepareFinalistDuel} from '../src/lib/finalistDuels.js';
+import {applyPopularity} from '../src/lib/academy.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -12,7 +14,7 @@ function harness(tc, manual, duel = false) {
   const count = tc ? duel ? 6 : 3 : 5;
   const gala = tc ? duel ? 14 : 17 : 15;
   const contestants = Array.from({ length: count }, (_, i) => ({ id: `c${i}`, name: `Name ${i}`, status: 'finalista', gender: 'm', history: [] }));
-  const context = vm.createContext({ popularityEnabled: true,
+  const context = vm.createContext({ prepareFinalistDuel,applyPopularity,songs:['Tema de prueba'],songsMeta:{},academy:{judges:[]}, popularityEnabled: true,
     Set, manual, gala, contestants, stage: 'initial', gstate: {},
     summaries: { [gala]: { [gala]: { reparto: contestants.map(c => ({ members: [c.id], valor: '' })) } } },
     createPublicReveal, assignPublicPercentage, nameOf: id => id, fmtPct: p => `${p.toFixed(2)}%`,
@@ -96,6 +98,8 @@ for (const manual of [false, true]) {
       c.advancePublicReveal();
     }
     assert.equal(c.stage, 'galaCerrada');
+    assert.equal(c.summaries[14].duelPerformances.length,2);
+    assert.equal(Object.keys(c.summaries[14].popularity).length,2);
     const result = c.summaries[14].g12_14;
     assert.equal(result.duel.pctWin, 67);
     assert.equal(c.contestants.filter(p => p.status === 'eliminado').length, 1);

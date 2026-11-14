@@ -10,5 +10,5 @@ test('feedback varies across teachers and limits choreography to dancing songs o
     assert.ok(!teacherFeedback({good:true,kind:'mic',dance:0},random).some(c=>c.teacher==='Vicky Gómez'));
     assert.ok(teacherFeedback({good:false,kind:'mic',group:true},random).some(c=>c.teacher==='Manu Guix'));
   }
-  assert.equal(names.size,5);assert.ok(texts.size>=40);
+  assert.equal(names.size,6);assert.ok(texts.size>=40);
 });

@@ -1,0 +1,154 @@
+{
+  "Profesores": [
+    {
+      "name": "Abril Zamora",
+      "photo": "/ot_photos/Profesores/AbrilZamora.gif"
+    },
+    {
+      "name": "Àngel Llàcer",
+      "photo": "/ot_photos/Profesores/AngelLlacer.gif"
+    },
+    {
+      "name": "Edith Salazar",
+      "photo": "/ot_photos/Profesores/EdithSalazar.gif"
+    },
+    {
+      "name": "Itziar Castro",
+      "photo": "/ot_photos/Profesores/ItziarCastro.gif"
+    },
+    {
+      "name": "Ivan Labanda",
+      "photo": "/ot_photos/Profesores/IvanLabanda.gif"
+    },
+    {
+      "name": "Kike Santander",
+      "photo": "/ot_photos/Profesores/KikeSantander.gif"
+    },
+    {
+      "name": "La Dani",
+      "photo": "/ot_photos/Profesores/LaDani.gif"
+    },
+    {
+      "name": "Los Javis",
+      "photo": "/ot_photos/Profesores/LosJavis.gif"
+    },
+    {
+      "name": "Mamen Márquez",
+      "photo": "/ot_photos/Profesores/MamenMarquez.gif"
+    },
+    {
+      "name": "Manu Guix",
+      "photo": "/ot_photos/Profesores/ManuGuix.gif"
+    },
+    {
+      "name": "Myriam Benedited",
+      "photo": "/ot_photos/Profesores/MyriamBenedited.gif"
+    },
+    {
+      "name": "Nina",
+      "photo": "/ot_photos/Profesores/Nina.gif"
+    },
+    {
+      "name": "Noemí Galera",
+      "photo": "/ot_photos/Profesores/NoemiGalera.gif"
+    },
+    {
+      "name": "Pablo Lluch",
+      "photo": "/ot_photos/Profesores/PabloLluch.gif"
+    },
+    {
+      "name": "Vicky Gómez",
+      "photo": "/ot_photos/Profesores/VickyGomez.gif"
+    },
+    {
+      "name": "Vic Mirallas",
+      "photo": "/ot_photos/Profesores/VicMirallas.gif"
+    }
+  ],
+  "Jurado": [
+    {
+      "name": "Abraham Mateo",
+      "photo": "/ot_photos/Jurado/AbrahamMateo.gif"
+    },
+    {
+      "name": "Ana Torroja",
+      "photo": "/ot_photos/Jurado/AnaTorroja.gif"
+    },
+    {
+      "name": "Buika",
+      "photo": "/ot_photos/Jurado/Buika.gif"
+    },
+    {
+      "name": "Coco Comín",
+      "photo": "/ot_photos/Jurado/CocoComin.gif"
+    },
+    {
+      "name": "Cris Regatero",
+      "photo": "/ot_photos/Jurado/CrisRegatero.gif"
+    },
+    {
+      "name": "Eva Perales",
+      "photo": "/ot_photos/Jurado/EvaPerales.gif"
+    },
+    {
+      "name": "Guille Milkyway",
+      "photo": "/ot_photos/Jurado/GuilleMilkyway.gif"
+    },
+    {
+      "name": "Inma Serrano",
+      "photo": "/ot_photos/Jurado/InmaSerrano.gif"
+    },
+    {
+      "name": "Javier Llano",
+      "photo": "/ot_photos/Jurado/JavierLlano.gif"
+    },
+    {
+      "name": "Joe Pérez Orive",
+      "photo": "/ot_photos/Jurado/JoePerezOrive.gif"
+    },
+    {
+      "name": "Leire Martínez",
+      "photo": "/ot_photos/Jurado/LeireMartinez.gif"
+    },
+    {
+      "name": "Manuel Martos",
+      "photo": "/ot_photos/Jurado/ManuelMartos.gif"
+    },
+    {
+      "name": "Mónica Naranjo",
+      "photo": "/ot_photos/Jurado/MonicaNaranjo.gif"
+    },
+    {
+      "name": "Narcís Rebollo",
+      "photo": "/ot_photos/Jurado/NarcisRebollo.gif"
+    },
+    {
+      "name": "Natalia Jiménez",
+      "photo": "/ot_photos/Jurado/NataliaJimenez.gif"
+    },
+    {
+      "name": "Nina (2020)",
+      "photo": "/ot_photos/Jurado/Ninaot2020.gif"
+    },
+    {
+      "name": "Noemí Galera (2008)",
+      "photo": "/ot_photos/Jurado/NoemiGaleraot2008.gif"
+    },
+    {
+      "name": "Pablo Rouss",
+      "photo": "/ot_photos/Jurado/PabloRouss.gif"
+    },
+    {
+      "name": "Pilar Tabarés",
+      "photo": "/ot_photos/Jurado/PilarTabares.gif"
+    },
+    {
+      "name": "Portu",
+      "photo": "/ot_photos/Jurado/Portu.gif"
+    },
+    {
+      "name": "Risto Mejide",
+      "photo": "/ot_photos/Jurado/RistoMejide.gif"
+    }
+  ]
+}

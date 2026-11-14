@@ -427,7 +427,7 @@ test('groupal opens both rehearsal blocks and the gala without affecting jury gr
     assert.equal(events[0].isGroup,true);
     assert.equal(events[0].song,'Grupal');
     assert.ok(events[0].feedback.some(c=>c.teacher==='Manu Guix'));
-    assert.ok(events.every(e=>e.feedback.length>=1 && e.feedback.length<=2));
+    assert.ok(events.every(e=>e.feedback.length>=1 && e.feedback.length<=4));
   }
   render().skipEvents();
   assert.equal(render().week.performances[0].isGroup,true);

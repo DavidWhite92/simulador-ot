@@ -160,7 +160,7 @@ const HOUSEHOLD_GROUP = [
   [-1, 'se burlan de quienes no participan en sus bromas y provocan malestar en la casa.'],
 ];
 
-export function createAcademyEvents(contestants, reparto, pairs = [], random = Math.random, songsMeta = {}) {
+export function createAcademyEvents(contestants, reparto, pairs = [], random = Math.random, songsMeta = {}, staff) {
   const alive = contestants.filter(c => ['active', 'finalista'].includes(c.status));
   if (!alive.length) return [];
   const ids = new Set(alive.map(c => c.id));
@@ -220,7 +220,8 @@ export function createAcademyEvents(contestants, reparto, pairs = [], random = M
       text:`${kind === 'mic' ? 'En el pase de micros de' : 'Ensayando'} ${row.song || 'su tema'}, ${new Intl.ListFormat('es').format(row.members.map(name))} ${text}${evolution ? ' ' + evolution : ''}`};
     const metadata=songsMeta.exact?.[row.song] || songsMeta.norm?.[normalize(row.song)] || songsMeta[row.song] || {};
     event.isGroup=row.type==='group';
-    event.feedback=teacherFeedback({good:sign>0,kind,group:event.isGroup,dance:Number(metadata.baile || 0)},random,usedFeedback);
+    const rehearsalMembers=row.members.map(id=>{const c=alive.find(c=>c.id===id);const skill=Number(c?.stats?.afinacion ?? 7.5);return {id,name:c?.name || id,score:clamp(6+sign+ (skill-7.5)*.2+(random()-.5)*2,0,10)};});
+    event.feedback=teacherFeedback({good:sign>0,kind,group:event.isGroup,dance:Number(metadata.baile || 0),members:rehearsalMembers,romantic:row.members.length===2 && /amor|love|kiss|beso|querer|romant/i.test(row.song),staff},random,usedFeedback);
     if(event.isGroup) {event.delta=0;event.positive=sign>0;event.text=`${kind==='mic'?'Pase de micros':'Ensayo'} de la grupal ${row.song}. ${sign>0?'El grupo gana seguridad y coordina mejor las voces.':'La coordinación todavía falla y hay entradas que necesitan trabajo.'} ${evolution}`;}
     events.push(event);
     if(kind === 'rehearsal') rehearsals.set(index,sign);
