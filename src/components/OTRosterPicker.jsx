@@ -1,3 +1,4 @@
+import {loadCustomLibrary,saveCustomLibrary} from "../lib/customLibrary";
 // ======================= IMPORTS =======================
 import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "./ui/card";
@@ -49,36 +50,10 @@ const withDefaults = (p, idx) => {
 };
 
 // ======== PERSISTENCIA LOCAL (localStorage) ==========
-const LS_KEY = "ot_custom_contestants";
-
-const loadCustoms = () => {
-  try {
-    const raw = JSON.parse(localStorage.getItem(LS_KEY) || "[]");
-    return Array.isArray(raw) ? raw : [];
-  } catch {
-    return [];
-  }
-};
-
-const saveCustom = (entry) => {
-  const all = loadCustoms();
-  all.push(entry);
-  localStorage.setItem(LS_KEY, JSON.stringify(all));
-};
-
-// Helpers extra para editar o borrar customs
-const saveCustoms = (arr) => localStorage.setItem(LS_KEY, JSON.stringify(arr));
-
-const upsertCustom = (entry) => {
-  const arr = loadCustoms().filter((c) => c.id !== entry.id);
-  arr.push(entry);
-  saveCustoms(arr);
-};
-
-const removeCustomLS = (id) => {
-  const arr = loadCustoms().filter((c) => c.id !== id);
-  saveCustoms(arr);
-};
+const loadCustoms = loadCustomLibrary;
+const saveCustom = async entry => saveCustomLibrary([...(await loadCustoms()),entry]);
+const upsertCustom = async entry => saveCustomLibrary([...(await loadCustoms()).filter(c=>c.id!==entry.id),entry]);
+const removeCustomLS = async id => saveCustomLibrary((await loadCustoms()).filter(c=>c.id!==id));
 
 const clamp15 = (n) => Math.max(0, Math.min(15, Number(n) || 0));
 
@@ -149,7 +124,7 @@ export default function OTRosterPicker({
       try {
         const r = await fetch("/ot_contestants.json");
         const raw = await r.json();
-        const customs = loadCustoms();
+        const customs = await loadCustoms();
         const prepared = [
           ...(raw || []).map(withDefaults),
           ...customs.map((c, i) =>
@@ -159,7 +134,7 @@ export default function OTRosterPicker({
         setPool(prepared);
       } catch {
         // si falla el fetch, al menos carga los customs
-        const customs = loadCustoms().map((c, i) =>
+        const customs = (await loadCustoms().catch(()=>[])).map((c, i) =>
           withDefaults({ ...c, edition: "Custom", isCustom: true }, i)
         );
         setPool(customs);
@@ -271,9 +246,9 @@ export default function OTRosterPicker({
     });
   };
 
-    const handleDelete = (id) => {
+    const handleDelete = async (id) => {
     if (!confirm("¿Seguro que quieres borrar este concursante custom?")) return;
-    removeCustomLS(id);
+    try {await removeCustomLS(id);} catch {setError("No se pudo borrar el concursante. Se ha conservado sin cambios.");return;}
     setPool((prev) => prev.filter((x) => x.id !== id));
     setSel((s) => s.filter((x) => x !== String(id)));
     if (editingId === id) {
@@ -282,7 +257,7 @@ export default function OTRosterPicker({
     }
   };
 
-    const validateAndSave = () => {
+    const validateAndSave = async () => {
       setError("");
       const name = form.name.trim();
       const photoInput = form.photo.trim();
@@ -311,7 +286,7 @@ export default function OTRosterPicker({
       if (editingId) {
         // EDITAR
         entry = { ...base, id: editingId };
-        upsertCustom(entry);
+        await upsertCustom(entry);
         onChange(roster.map(p => p.id === entry.id ? withDefaults(entry, 0) : p));
         setPool((p) =>
           p.map((c) => (c.id === editingId ? withDefaults(entry, 0) : c))
@@ -320,12 +295,12 @@ export default function OTRosterPicker({
         // NUEVO
         const id = `custom-${slugify(name)}-${Date.now()}`;
         entry = { ...base, id };
-        saveCustom(entry);
+        await saveCustom(entry);
         setPool((p) => [...p, withDefaults(entry, p.length + 1)]);
       }
 
       } catch {
-        return setError("No se pudo guardar: el almacenamiento del navegador está lleno o no está disponible. Borra algún concursante custom o prueba con otra foto.");
+        return setError("No se pudo guardar: el almacenamiento del navegador está lleno o no está disponible. Tus concursantes anteriores se conservan. Descarga una copia de tu temporada antes de cerrar.");
       }
       setShowCreator(false);
       setEditingId(null);

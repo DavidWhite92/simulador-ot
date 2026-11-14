@@ -1,3 +1,5 @@
+import SeasonStorageControls from "./components/SeasonStorageControls";
+import {loadCustomLibrary} from "./lib/customLibrary";
 import {prepareFinalistDuel} from "./lib/finalistDuels";
 import {applyPopularity} from "./lib/academy";
 import {secondChance,favoriteComment} from "./lib/juryComments";
@@ -828,12 +830,14 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
   const [showBestPerformances,setShowBestPerformances] = useState(false);
   const seasonFinished = stage === "galaCerrada" && Boolean(summaries[17]?.g15?.winner || summaries[15]?.winner);
 
+  const [saveCode,setSaveCode]=useState(null);
   const SAVE_VERSION = 1;
 
     function buildSavePayload() {
     // ojo con Maps/Sets: el 'replacer' de arriba los convierte
     return {
       v: SAVE_VERSION,
+      saveCode,
       popularityEnabled,
       relationshipsEnabled,
       repechageOption,
@@ -857,6 +861,7 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
 
     function applyLoadedState(payload) {
       if (!payload || payload.v !== SAVE_VERSION) throw new Error("Versión de guardado incompatible");
+      setSaveCode(payload.saveCode || null);
 
       // Restaura en este orden para que la UI no parpadee raro:
       setContestants((payload.contestants || []).map(c => ({ ...c, popularity: c.popularity ?? 50 })));
@@ -943,22 +948,11 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
 
 
       useEffect(() => {
-      const LS_KEY = "ot_custom_contestants";
-
-      const loadCustoms = () => {
-        try {
-          const raw = JSON.parse(localStorage.getItem(LS_KEY) || "[]");
-          return Array.isArray(raw) ? raw : [];
-        } catch {
-          return [];
-        }
-      };
-
       const build = async () => {
         try {
           const res = await fetch("/ot_contestants.json");
           const official = await res.json(); // [{name, photo,...}]
-          const customs = loadCustoms();     // [{name, photo,...}]
+          const customs = await loadCustomLibrary();     // [{name, photo,...}]
 
           const map = new Map();
           // oficiales
@@ -974,7 +968,7 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
         } catch {
           // si falla el fetch, al menos cargar customs
           const map = new Map();
-          for (const p of loadCustoms() || []) {
+          for (const p of await loadCustomLibrary().catch(()=>[]) || []) {
             if (p?.name && p?.photo) map.set(norm(p.name), p.photo);
           }
           setPhotoByName(map);
@@ -1125,6 +1119,7 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
 
 
   function iniciar() {
+    setSaveCode(null);
     if (!songsReady || !songsMetaReady || !songs.length) { alert("Espera a que se carguen las canciones antes de empezar."); return; }
     if (roster.length !== 18) {
       alert(`Hay ${roster.length} concursantes seleccionados. Deben ser exactamente 18.`);
@@ -1205,6 +1200,7 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
 
 
   function reiniciar(){
+    setSaveCode(null);
     setAcademy(emptyAcademy());
     setShowPopularity(false);
       setShowRelationships(false); setShowBestPerformances(false);
@@ -3991,45 +3987,7 @@ function gala10Profes() {
       <SeasonSettings repechageOption={repechageOption} setRepechageOption={setRepechageOption} relationshipsEnabled={relationshipsEnabled} setRelationshipsEnabled={setRelationshipsEnabled} popularityEnabled={popularityEnabled} setPopularityEnabled={setPopularityEnabled} manual={manual} setManual={setManual} mode={mode}
         onModeChange={onModeChange} started={contestants.length > 0} />
 
-      {contestants.length > 0 && (
-      <Button
-        onClick={() => {
-          try {
-            const payload = buildSavePayload();
-            const code = Math.floor(1000 + Math.random() * 9000).toString(); // 4 cifras
-            const packed = packState(payload);
-            localStorage.setItem("ot_save_" + code, packed);
-
-            navigator.clipboard?.writeText(code);
-            alert("Código guardado y copiado: " + code + "\n\n⚠️ Solo funciona en este dispositivo/navegador.");
-          } catch (e) {
-            alert("Error al guardar: " + e.message);
-          }
-        }}
-      >
-        💾 Guardar
-      </Button>
-      )}
-
-      <Button
-        variant="outline"
-        onClick={() => {
-          const code = prompt("Introduce el código de tu simulación (4 cifras):");
-          if (!code) return;
-          try {
-            const packed = localStorage.getItem("ot_save_" + code.trim());
-            if (!packed) throw new Error("No existe ese código en este navegador.");
-            const payload = unpackState(packed);
-            onLoadSeason(payload);
-            alert("Simulación cargada correctamente.");
-          } catch (e) {
-            alert("Error al cargar: " + e.message);
-          }
-        }}
-      >
-        ⬇️ Cargar
-      </Button>
-
+      <SeasonStorageControls started={contestants.length>0} buildPayload={buildSavePayload} pack={packState} unpack={unpackState} saveCode={saveCode} setSaveCode={setSaveCode} onLoad={onLoadSeason} />
 
       <center><p className="text-xs text-muted-foreground"><strong>Simulador OT (2025)</strong> - Para cualquier duda o sugerencia escríbenos a otsimulador@gmail.com</p></center>
 
