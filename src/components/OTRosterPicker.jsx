@@ -1,6 +1,6 @@
 import {loadCustomLibrary,saveCustomLibrary} from "../lib/customLibrary";
 // ======================= IMPORTS =======================
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { Card, CardContent } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -93,6 +93,8 @@ export default function OTRosterPicker({
   });
   const [error, setError] = useState("");
   const [photoLoading, setPhotoLoading] = useState(false);
+  const [customSaving,setCustomSaving]=useState(false);
+  const customSaveBusy=useRef(false);
   const [editingId, setEditingId] = useState(null);
 
 
@@ -258,6 +260,7 @@ export default function OTRosterPicker({
   };
 
     const validateAndSave = async () => {
+      if(customSaveBusy.current)return;
       setError("");
       const name = form.name.trim();
       const photoInput = form.photo.trim();
@@ -282,6 +285,7 @@ export default function OTRosterPicker({
       };
 
       let entry;
+      customSaveBusy.current=true;setCustomSaving(true);
       try {
       if (editingId) {
         // EDITAR
@@ -301,7 +305,7 @@ export default function OTRosterPicker({
 
       } catch {
         return setError("No se pudo guardar: el almacenamiento del navegador está lleno o no está disponible. Tus concursantes anteriores se conservan. Descarga una copia de tu temporada antes de cerrar.");
-      }
+      } finally {customSaveBusy.current=false;setCustomSaving(false);}
       setShowCreator(false);
       setEditingId(null);
       setForm({
@@ -537,7 +541,7 @@ export default function OTRosterPicker({
                   <Button
                     onClick={validateAndSave}
                     disabled={
-                      photoLoading ||
+                      customSaving || photoLoading ||
                       Object.values(statErrors).some(Boolean)
                     }
                   >

@@ -7,6 +7,7 @@ function legacyCustoms() {
 }
 export async function loadCustomLibrary() {
   const old=legacyCustoms();
+  if(!globalThis.indexedDB) return old;
   try {const stored=await readRecord('custom-library');return stored?.entries || old;}
   catch(error) {if(old.length)return old;throw error;}
 }
