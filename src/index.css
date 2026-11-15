@@ -23,7 +23,7 @@ body {
 }
 body[data-ot-backdrop='salon'] { --ot-backdrop-image: url('/ot_photos/academia-salon.png'); }
 body[data-ot-backdrop='aula'] { --ot-backdrop-image: url('/ot_photos/academia-aula.png'); }
-body[data-ot-backdrop='micros'] { --ot-backdrop-image: url('/ot_photos/academia-micros.png'); }
+body[data-ot-backdrop='micros'] { --ot-backdrop-image: url('/ot_photos/academia-micros-v2.png'); }
 /* A separate fixed layer keeps the studio subtle without fading the interface. */
 body::before {
   content: '';
