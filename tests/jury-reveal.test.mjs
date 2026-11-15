@@ -1,5 +1,5 @@
 import {secondChance,favoriteComment} from '../src/lib/juryComments.js';
-import { selectPerformanceNominees, mixedJuryOrder, manualJuryOptions } from '../src/lib/juryPerformance.js';
+import { selectPerformanceNominees, mixedJuryOrder, manualJuryOptions, reconcileJuryPlan } from '../src/lib/juryPerformance.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -11,7 +11,7 @@ function juryHarness(file, gala, manual = false, choose = () => null) {
   const source = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
   const body = source.slice(source.indexOf('    function evaluarSiguientePorJurado('), source.indexOf('    function profesoresSalvanUno('));
   const contestants = Array.from({ length: 12 }, (_, i) => ({ id: `c${i}`, name: `Name ${i}`, gender: i % 2 ? 'm' : 'f', status: 'active' }));
-  const context = vm.createContext({secondChance,favoriteComment, selectPerformanceNominees, mixedJuryOrder, manualJuryOptions, performanceNominationModifier,
+  const context = vm.createContext({secondChance,favoriteComment, selectPerformanceNominees, mixedJuryOrder, manualJuryOptions, reconcileJuryPlan, performanceNominationModifier,
     contestants, gala, manual, pickManually: choose, nameOf: id => id, runJuryReveal, setViewGala() {},
     buildValoracionesOrder: ids => ids, getSongFor: () => null, songsMeta: {},
     performanceModifier: () => 0, BASE_NOM_PROB: 0.5, PUBLIC_WEIGHT: 0,
@@ -26,6 +26,44 @@ function juryHarness(file, gala, manual = false, choose = () => null) {
 }
 
 for (const file of ['SimuladorOT.jsx', 'SimuladorOT_RTVE.jsx']) {
+  for (const initialManual of [false, true]) {
+    for (const manualChoice of ['salvado', 'nominado']) {
+      test(`${file}: switching manual off recomputes exactly four nominees (${initialManual}, ${manualChoice})`, () => {
+        const {step, initial, context} = juryHarness(file, 1, initialManual, choices => choices.includes(manualChoice) ? manualChoice : choices[0]);
+        initial.summaries[1] = {performances:Object.fromEntries(context.contestants.map((c,i)=>[c.id,{score:i<=4?2:8}]))};
+        let state=initial;
+        // Initialize the original plan, then override verdicts in manual mode.
+        state=runJuryReveal(step,state,1);
+        context.manual=true;
+        while(state.gstate.evalResults.length<2) state=runJuryReveal(step,state,1);
+        const announced=state.gstate.evalResults.map(row=>({...row}));
+        context.manual=false;
+        const result=runJuryReveal(step,state,1,true);
+        assert.equal(result.stage,'profesSalvan');
+        assert.equal(result.gstate.nominados.length,4);
+        assert.equal(new Set(result.gstate.nominados).size,4);
+        assert.deepEqual(result.gstate.evalResults.slice(0,2).map(row=>({...row})),announced);
+        assert.equal(result.gstate.evalResults.slice(-2).filter(row=>row.result==='nominado').length,1);
+        assert.equal(result.gstate.evalResults.filter(row=>row.result==='nominado').length,4);
+        assert.equal(result.summaries[1].juradoNominados.length,4);
+      });
+    }
+  }
+  test(`${file}: repeated mode changes, including the last three announced cards, keep a mixed final pair`,()=>{
+    for(let pivot=0;pivot<11;pivot++) {
+      const {step,initial,context}=juryHarness(file,1,false,choices=>choices[0]);
+      initial.summaries[1]={performances:Object.fromEntries(context.contestants.map((c,i)=>[c.id,{score:i<=4?2:8}]))};
+      let state=initial;
+      for(let clicks=0;state.stage==='juradoEvaluando' && clicks<80;clicks++) {
+        const count=state.gstate.evalResults.length;
+        context.manual=count<pivot || (count===pivot && !state.gstate.currentEvaluadoId);
+        state=runJuryReveal(step,state,1);
+      }
+      assert.equal(state.stage,'profesSalvan');
+      assert.equal(state.gstate.nominados.length,4);
+      assert.equal(state.gstate.evalResults.slice(-2).filter(row=>row.result==='nominado').length,1);
+    }
+  });
   test(`${file}: performance-based nominations override old order constraints`, () => {
     const { step, initial, context } = juryHarness(file,1);
     initial.summaries[1] = { performances: Object.fromEntries(context.contestants.map((c,i) => [c.id, { score: i>=1 && i<=4 ? 2 : 8, judge:'Risto Mejide', critique:'Valoración de prueba.' }])) };

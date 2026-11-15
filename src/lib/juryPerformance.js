@@ -29,3 +29,34 @@ export function manualJuryOptions(remaining, needed) {
   const choices = [...(canSave ? ['salvado'] : []), ...(canNominate ? ['nominado'] : [])];
   return choices.length ? choices : needed > 0 ? ['nominado'] : ['salvado'];
 }
+
+export function reconcileJuryPlan(state, contestants, performances = {}, random = Math.random) {
+  const evaluated = new Set((state.evalResults || []).map(row => row.id));
+  const nominees = [...new Set(state.nominados || [])];
+  const pending = contestants.filter(c => c.status === 'active' && c.id !== state.favoritoId
+    && !evaluated.has(c.id) && !nominees.includes(c.id) && !state.salvados?.has(c.id)).map(c => c.id);
+  const needed = Math.max(0, 4 - nominees.length);
+  const oldPlan = state.performanceNominees;
+  const valid = oldPlan && oldPlan.filter(id => pending.includes(id)).length === needed
+    && nominees.every(id => oldPlan.includes(id))
+    && !(state.evalResults || []).some(row => (row.result === 'nominado') !== oldPlan.includes(row.id));
+  if (valid && state.juryOrderReady && !state.juryManualOverride) return state;
+
+  let selected = selectPerformanceNominees(pending, performances, contestants, needed, random);
+  const current = pending.includes(state.currentEvaluadoId) ? state.currentEvaluadoId : null;
+  // An already announced contestant stays on screen. Reserve both outcomes for
+  // the final pair even when manual mode is switched off halfway through a card.
+  if (current && pending.length > 2) {
+    const allowed = manualJuryOptions(pending.length, needed);
+    const decision = selected.includes(current) ? 'nominado' : 'salvado';
+    if (!allowed.includes(decision)) {
+      const nominate = allowed.includes('nominado');
+      selected = [...(nominate ? [current] : []), ...selectPerformanceNominees(
+        pending.filter(id => id !== current), performances, contestants, needed - (nominate ? 1 : 0), random)];
+    }
+  }
+  const performanceNominees = [...nominees, ...selected];
+  const rest = mixedJuryOrder(pending.filter(id => id !== current), performanceNominees, random);
+  return { ...state, performanceNominees, evaluacionOrden: current ? [current, ...rest] : rest,
+    juryOrderReady: true, juryManualOverride: false, finalTwoPlan: undefined };
+}

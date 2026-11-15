@@ -19,7 +19,7 @@ import TablePerson from "./components/TablePerson";
 import { useMusicBackground } from "./lib/audio";
 import RelationshipsTable from "./components/RelationshipsTable";
 import { choosePeerSave } from "./lib/relationships";
-import { selectPerformanceNominees, mixedJuryOrder, manualJuryOptions } from "./lib/juryPerformance";
+import { selectPerformanceNominees, mixedJuryOrder, manualJuryOptions, reconcileJuryPlan } from "./lib/juryPerformance";
 import ChatReveal from "./components/ChatReveal";
 import React, { useMemo, useState, useEffect } from "react";
 import { motion } from "framer-motion";
@@ -2266,17 +2266,11 @@ export default function SimuladorOT_RTVE({ staff, setStaff, repechageOption, set
 
     function evaluarPasoJurado({ gstate, galaLogs, summaries, setGstate, setGalaLogs, setSummaries, setStage, pushLog }){
       if (!gstate) return;
-      if (!manual && summaries[gala]?.performances && !gstate.performanceNominees) {
-        const eligible = contestants.filter(c => c.status === "active" && c.id !== gstate.favoritoId && !gstate.evalResults.some(r => r.id === c.id)).map(c => c.id);
-        gstate = { ...gstate, performanceNominees: [...gstate.nominados, ...selectPerformanceNominees(eligible.filter(id => !gstate.nominados.includes(id)), summaries[gala].performances, contestants, 4 - gstate.nominados.length)] };
-      }
-
-
-      if (!manual && gstate.performanceNominees && !gstate.juryOrderReady) {
-        const remainingIds = contestants.filter(c => c.status === "active" && c.id !== gstate.favoritoId && !gstate.evalResults.some(r => r.id === c.id)).map(c => c.id);
-        const current = gstate.currentEvaluadoId;
-        const order = mixedJuryOrder(remainingIds.filter(id => id !== current), gstate.performanceNominees, Math.random);
-        gstate = { ...gstate, evaluacionOrden: current ? [current, ...order] : order, juryOrderReady: true };
+      if (manual) {
+        // Invalidate the old automatic forecast before any manual verdict.
+        gstate = { ...gstate, juryManualOverride: true, juryOrderReady: false };
+      } else if (summaries[gala]?.performances || gstate.performanceNominees || gstate.juryManualOverride) {
+        gstate = reconcileJuryPlan(gstate, contestants, summaries[gala]?.performances || {});
       }
 
       const sufOfId = (id) => {

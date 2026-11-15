@@ -20,7 +20,7 @@ export default function App() {
   const [loadedSeason, setLoadedSeason] = useState(null);
   const onLoadSeason = (payload) => {
     if (!payload || payload.v !== 1) throw new Error("Versión de guardado incompatible");
-    if (payload.mode && !["telecinco", "rtve"].includes(payload.mode)) throw new Error("Formato de temporada desconocido");
+    if (payload.mode && !["tve2001", "telecinco", "rtve"].includes(payload.mode)) throw new Error("Formato de temporada desconocido");
     setLoadedSeason(payload);
     setStaff(payload.academy?.staff || defaultStaff);
     if(payload.academy?.judges) setJudgeNames(payload.academy.judges);
@@ -33,8 +33,8 @@ export default function App() {
       <MusicControl />
       <StaffContext.Provider value={{...staff,judges:staff.judges.map((person,i)=>({...person,name:judgeNames[i]?.trim() || `Juez ${i+1}`}))}}>
       <div className="w-full min-w-0 px-1 sm:px-6 lg:px-12">
-        {mode === "telecinco" ? (
-          <SimuladorOT {...shared} />
+        {mode !== "rtve" ? (
+          <SimuladorOT key={mode} {...shared} />
         ) : (
           <SimuladorOT_RTVE {...shared} />
         )}

@@ -355,7 +355,7 @@ export default function OTRosterPicker({
         <Button variant="outline" onClick={() => onChange([])}>Limpiar lista</Button>
         <span className="text-sm text-gray-600" aria-live="polite">{sel.length} / {max} seleccionados</span>
       </div>
-      {selected.length === 0 && <p className="rounded-lg border border-dashed p-4 text-sm text-gray-500">Busca o abre una edición para seleccionar a tus 18 concursantes.</p>}
+      {selected.length === 0 && <p className="rounded-lg border border-dashed p-4 text-sm text-gray-500">Busca o abre una edición para seleccionar a tus {max} concursantes.</p>}
       {/* Seleccionados (chips con foto) */}
       {selected.length > 0 && (
         <div className="flex flex-wrap gap-2">

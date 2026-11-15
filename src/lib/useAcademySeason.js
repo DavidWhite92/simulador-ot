@@ -12,8 +12,8 @@ export function useAcademySeason({ contestants, setContestants, summaries, setSu
   const groupSong=summaries[gala]?.[gala]?.groupSong;
   const groupMembers=[...new Set(reparto.flatMap(row=>row.members))];
   const galaReparto=groupSong ? [{type:'group',song:groupSong,members:groupMembers},...reparto] : reparto;
-  const finalGala = mode === 'rtve' ? 15 : 17;
-  const chatGala = gala > 0 && gala < finalGala && stage === 'galaCerrada' && week?.done && !week.chatDone ? gala : null;
+  const finalGala = mode === 'tve2001' ? 14 : mode === 'rtve' ? 15 : 17;
+  const chatGala = (gala > 0 || mode === 'tve2001') && gala < finalGala && stage === 'galaCerrada' && week?.done && !week.chatDone ? gala : null;
   const chat = chatGala == null ? null : academy.weeks[chatGala]?.chat || { events: [], shown: 0 };
   const blocked = contestants.length > 0 && (!week?.done || chatGala != null);
   const backdrop = seasonBackdrop({ started: contestants.length > 0, week, chat });

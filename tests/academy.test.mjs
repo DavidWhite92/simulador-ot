@@ -133,6 +133,7 @@ function weekHarness() {
   let stored;
   const source = readFileSync(new URL('../src/lib/useAcademySeason.js', import.meta.url), 'utf8').replace(/^import .*;\r?\n/gm, '').replaceAll('export ', '');
   const ctx = vm.createContext({
+    seasonBackdrop: () => 'studio', useEffect: () => {},
     updatePairs, eventRelationships, rehearsalRelationships, performanceRelationships,
     useState: init => { stored ??= init(); return [stored, update => { stored = typeof update === 'function' ? update(stored) : update; }]; },
     createChatEvents: (people, summary, random, allow, gala) => createChatEvents(people, summary, rng(53), allow, gala), applyPopularity, createAcademyEvents: (people,rows,pairs,_random,meta) => createAcademyEvents(people,rows,pairs,rng(8),meta), createPerformances: (...args) => createPerformances(...args, rng(20)), popularityOf,
@@ -263,7 +264,7 @@ test('El Chat blocks the next phase, persists mid-event and updates end-of-gala 
 });
 
 test('El Chat is disabled after Gala 0 and both finals, including loaded pending chats', () => {
-  for (const [mode,gala] of [['telecinco',0],['telecinco',17],['rtve',0],['rtve',15]]) {
+  for (const [mode,gala] of [['telecinco',0],['telecinco',17],['rtve',0],['rtve',15],['tve2001',14]]) {
     const {args,render}=weekHarness();
     args.mode=mode; args.gala=gala; args.stage='galaCerrada';
     render().setAcademy({judges:['A','B','C','D'],pairs:[],weeks:{[gala]:{done:true,chat:{events:[],shown:0}}}});
@@ -273,6 +274,25 @@ test('El Chat is disabled after Gala 0 and both finals, including loaded pending
     args.summaries[0]={gala0:{eliminados:[]}};
     if (gala===0) assert.equal(render().chat,null);
   }
+});
+
+test('TVE 2001 alone enables opening-night Chat, without Academy events or repeated effects', () => {
+  const {args,render}=weekHarness();
+  args.mode='tve2001'; args.gala=0; args.stage='classicOpening';
+  args.summaries={0:{0:{reparto}}};
+  render().next();
+  assert.equal(render().week.phase,'performances');
+  assert.equal(render().week.events.length,0);
+  render().skipPerformances();
+  assert.equal(render().chat,null);
+  args.stage='galaCerrada';
+  assert.equal(render().chatGala,0);
+  assert.equal(render().blocked,true);
+  render().skipChat();
+  assert.equal(render().blocked,false);
+  const saved=JSON.stringify(args.contestants);
+  render().skipChat();
+  assert.equal(JSON.stringify(args.contestants),saved);
 });
 
 test('weekly events never repeat a template, including microphone checks and couples', () => {
