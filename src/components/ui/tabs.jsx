@@ -8,7 +8,7 @@ export function Tabs({ defaultValue, children }) {
 }
 
 export function TabsList({ className = "", children }) {
-  return <div className={`inline-flex gap-2 rounded-xl border p-1 ${className}`}>{children}</div>;
+  return <div className={`ot-tabs inline-flex gap-2 rounded-xl border p-1 ${className}`}>{children}</div>;
 }
 
 export function TabsTrigger({ value, className = "", children }) {
@@ -16,8 +16,9 @@ export function TabsTrigger({ value, className = "", children }) {
   const active = current === value;
   return (
     <button
+      type="button" aria-pressed={active}
       onClick={() => setValue(value)}
-      className={`rounded-lg px-3 py-1 text-sm ${active ? "bg-black text-white" : "bg-white text-black"} ${className}`}
+      className={`ot-tab ${active ? "ot-tab-active" : ""} rounded-lg px-3 py-1 text-sm ${active ? "bg-black text-white" : "bg-white text-black"} ${className}`}
     >
       {children}
     </button>

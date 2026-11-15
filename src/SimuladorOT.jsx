@@ -1722,7 +1722,7 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
     function revealAllPeerVotes() {
       const c = gstate.ceremony;
       if (!c || c.kind !== "peers") return;
-      if (c.phase === "result") { continueCeremony(); return; }
+      if (c.phase === "result") return;
       const votes = [...c.votes];
       for (const voterId of c.voters.slice(votes.length)) {
         const votedId = manual ? pickManually(c.ids, false, nameOf, `${nameOf(voterId)} salva a…`) : choosePeerSave({ voterId, candidates: c.ids, relations: academy.relationships, pairs: academy.pairs, reparto: summaries[gala]?.[gala]?.reparto, enabled: relationshipsEnabled }, Math.random);
@@ -1733,7 +1733,7 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
         votes.push({ voterId, votedId });
       }
       const completed = { ...gstate, ceremony: { ...c, votes } };
-      (c.source === "specialPeers" ? gala10Compas : companerosVotan)(completed, true);
+      (c.source === "specialPeers" ? gala10Compas : companerosVotan)(completed);
       setViewGala(gala);
     }
 
@@ -3952,20 +3952,15 @@ function gala10Profes() {
 
   return (
     <div className="min-w-0 px-1 py-3 sm:p-6 max-w-7xl mx-auto space-y-4 sm:space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+      <div className="ot-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <img
           src="/LogoOT2005_Negro.png"
           alt="Simulador Web de Operación Triunfo"
-          className="h-auto max-h-16 sm:max-h-20 md:max-h-[6.75rem] w-auto object-contain shrink-0 cursor-pointer hover:opacity-80 transition"
+          className="ot-brand h-auto max-h-16 sm:max-h-20 md:max-h-[6.75rem] w-auto object-contain shrink-0 cursor-pointer hover:opacity-80 transition"
           onClick={reiniciar}
           role="button" tabIndex={0} onKeyDown={e=>{if(e.key==="Enter" || e.key===" "){e.preventDefault();reiniciar();}}}
         />
         <div className="flex gap-2 w-full sm:w-auto">
-          {contestants.length === 0 && (
-            <Button onClick={() => document.getElementById("roster-search")?.focus()}>
-              👥 Elegir concursantes OT
-            </Button>
-          )}
           <Button
             onClick={reiniciar}
             className="flex-1 sm:flex-none px-3 py-2 text-sm sm:px-4 sm:py-2 sm:text-base"
@@ -3976,12 +3971,16 @@ function gala10Profes() {
       </div>
 
 
+      {contestants.length === 0 && <div className="ot-intro"><span className="ot-eyebrow">TU PROPIA EDICIÓN DE OT</span><h1>Tu academia. <span>Tu historia.</span></h1><p>Elige a tus concursantes, personaliza la temporada y vive cada gala.</p><div className="ot-format"><span aria-hidden="true" />{mode === 'telecinco' ? 'Telecinco · 2005–2011' : 'TVE · 2017–2020'}</div></div>}
+
       {contestants.length === 0 && (
         <Card>
 
           <OTRosterPicker roster={roster} onChange={updateRoster} onStart={iniciar} />
+          <div className="mx-auto max-w-6xl space-y-3 px-4 pb-4 sm:px-6 sm:pb-6">
           <StaffSetup staff={staff} setStaff={setStaff} judgeNames={judgeNames} setJudgeNames={setJudgeNames} />
           <AddSong onAdd={(song,previous)=>{setSongs(old=>[...new Set([...old.filter(title=>title!==previous),song.title])]);setSongsMeta(old=>({...old,exact:{...old.exact,[song.title]:song}}));}} />
+          </div>
         </Card>
       )}
       <SeasonSettings repechageOption={repechageOption} setRepechageOption={setRepechageOption} relationshipsEnabled={relationshipsEnabled} setRelationshipsEnabled={setRelationshipsEnabled} popularityEnabled={popularityEnabled} setPopularityEnabled={setPopularityEnabled} manual={manual} setManual={setManual} mode={mode}

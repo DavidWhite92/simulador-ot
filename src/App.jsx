@@ -29,7 +29,7 @@ export default function App() {
   const shared = { staff, setStaff, repechageOption, setRepechageOption, judgeNames, setJudgeNames, mode, onModeChange: setMode, roster, setRoster, manual, setManual, popularityEnabled, setPopularityEnabled, relationshipsEnabled, setRelationshipsEnabled, loadedSeason, onLoadSeason, onLoadedSeason: () => setLoadedSeason(null) };
 
   return (
-    <div className="min-h-screen bg-white/60">
+    <div className="ot-shell min-h-screen">
       <MusicControl />
       <StaffContext.Provider value={{...staff,judges:staff.judges.map((person,i)=>({...person,name:judgeNames[i]?.trim() || `Juez ${i+1}`}))}}>
       <div className="w-full min-w-0 px-1 sm:px-6 lg:px-12">

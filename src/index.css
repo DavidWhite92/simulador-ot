@@ -7,10 +7,105 @@ html, body, #root {
   height: 100%;
 }
 
+/* Electric Show: application chrome only. Table cells retain their original styles. */
+:root {
+  --ot-night: #151128;
+  --ot-violet: #7138ff;
+  --ot-pink: #ff3ba7;
+  --ot-cyan: #33d9ff;
+  --ot-white: #f7f3ff;
+}
 body {
-  background-image: url("/ot_photos/bg-simulador.jpg");
-  background-repeat: no-repeat;
-  background-position: center center;
-  background-size: cover;
-  background-attachment: fixed;
+  isolation: isolate;
+  background: radial-gradient(ellipse at 5% 0%, #7138ff17, transparent 45%),
+    radial-gradient(ellipse at 100% 25%, #33d9ff1c, transparent 42%), #f7f3ff;
+}
+/* A separate fixed layer keeps the studio subtle without fading the interface. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: url('/ot_photos/plato-electric-show.png') center center / cover no-repeat;
+  opacity: .20;
+}
+.ot-shell { padding-bottom: 5rem; }
+.ot-header {
+  position: relative;
+  padding: 1.5rem 4rem 1.5rem 1.75rem;
+  border: 1px solid #ffffff24;
+  border-radius: 1.5rem;
+  background: radial-gradient(ellipse at top right, #7138ff66, transparent 65%), var(--ot-night);
+  box-shadow: 0 12px 32px #15112819;
+}
+.ot-header::after {
+  content: '';
+  position: absolute;
+  height: 3px;
+  bottom: 0;
+  left: 1.5rem;
+  right: 1.5rem;
+  background: linear-gradient(90deg, var(--ot-violet), var(--ot-pink), var(--ot-cyan));
+  border-radius: 10px;
+}
+.ot-brand { filter: brightness(0) invert(1); }
+.ot-intro { padding: .5rem .25rem; color: var(--ot-night); }
+.ot-eyebrow { color: #5930bc; font-size: .72rem; font-weight: 800; letter-spacing: .14em; }
+.ot-intro h1 { margin-top: .35rem; font-size: clamp(1.75rem, 4vw, 2.65rem); font-weight: 800; letter-spacing: -.045em; line-height: 1.2; }
+.ot-intro h1 span { color: #6730db; }
+.ot-intro p { margin-top: .65rem; color: #5c566e; font-size: .95rem; line-height: 1.6; }
+.ot-format { display: inline-flex; align-items: center; gap: .5rem; margin-top: .9rem; padding: .4rem .8rem; background: #fff; border: 1px solid #e3dcf3; border-radius: 999px; font-size: .8rem; font-weight: 600; }
+.ot-format > span { height: .5rem; width: .5rem; background: #7138ff; border-radius: 50%; box-shadow: 0 0 0 3px #7138ff16; }
+.ot-card { border-color: #e4def0; box-shadow: 0 8px 28px #15112808; }
+.ot-shell .ot-button {
+  min-height: 44px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  transition: background-color .15s, box-shadow .15s, transform .15s;
+}
+.ot-shell .ot-button-default {
+  background: linear-gradient(115deg, #7138ff, #5425bc);
+  color: white;
+  box-shadow: 0 3px 9px #7138ff20;
+}
+.ot-shell .ot-button-outline { color: #4d2b8e; background: #fff; border-color: #d9cceb; }
+.ot-shell .ot-button-secondary { color: #4c288c; background: #eee7ff; border-color: #e1d4ff; }
+.ot-shell .ot-button-destructive { color: #fff; background: #b42342; }
+.ot-shell .ot-button:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+.ot-shell .ot-button:not(:disabled):hover { box-shadow: 0 4px 14px #7138ff30; transform: translateY(-1px); }
+.ot-header .ot-button { background: #ffffff12; border-color: #ffffff40; color: #fff; box-shadow: none; }
+.ot-header .ot-button:hover { background: #ffffff24; }
+.ot-tabs { max-width: 100%; flex-wrap: wrap; background: #f2edf9; border-color: #e4daef; }
+.ot-tab { min-height: 44px; color: #5a526b; background: transparent; font-weight: 600; }
+.ot-tab-active { color: #fff; background: #6230cd; box-shadow: 0 2px 6px #7138ff24; }
+.ot-shell :where(input, select, textarea):not(table *) {
+  border-color: #d6cde5;
+  accent-color: #6730db;
+}
+.ot-shell :where(input:not([type=checkbox]):not([type=radio]):not([type=range]), select):not(table *) { min-height: 44px; border-radius: .7rem; }
+.ot-shell :where(button, [role=button], summary, input, select, textarea, a):focus-visible {
+  outline: 3px solid #6930d9;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px #fff;
+}
+.ot-header :where(button, [role=button]):focus-visible { outline-color: var(--ot-cyan); box-shadow: none; }
+.ot-shell details:not(table *) { border-color: #e2d9ed; border-radius: 1rem; }
+.ot-shell summary:not(table *) { min-height: 44px; align-content: center; color: #43305f; }
+.ot-shell details[open]:not(table *) > summary { margin-bottom: .5rem; color: #5826b4; }
+.ot-settings { max-height: min(80dvh, 680px); overflow-y: auto; border-color: #dfd2f3; box-shadow: 0 16px 60px #15112830; }
+.ot-settings-toggle { background: linear-gradient(135deg, #7138ff, #45218c); border: 2px solid #fff; box-shadow: 0 5px 22px #5425bc50; }
+.ot-music { color: #512b91; border-color: #e4d9f4; box-shadow: 0 4px 18px #15112813; }
+.ot-music > button { min-width: 36px; min-height: 36px; }
+@media (max-width: 639px) {
+  .ot-header { padding: 1.1rem; padding-top: 1.4rem; border-radius: 1.15rem; }
+  .ot-brand { align-self: flex-start; max-width: 55%; max-height: 64px; }
+  .ot-intro { padding: .3rem .35rem; }
+  .ot-header > div { flex-wrap: wrap; }
+  .ot-header .ot-button { flex: 1 1 120px; font-size: .8rem; }
+  .ot-music { right: .7rem; top: .8rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ot-shell .ot-button { transition: none; }
+  .ot-shell .ot-button:not(:disabled):hover { transform: none; }
 }

@@ -15,7 +15,7 @@ export function Button({ variant = "default", size = "md", className = "", ...pr
   };
   return (
     <button
-      className={`rounded-xl ${variants[variant] ?? variants.default} ${sizes[size] ?? sizes.md} ${className}`}
+      className={`ot-button ot-button-${variant} rounded-xl ${variants[variant] ?? variants.default} ${sizes[size] ?? sizes.md} ${className}`}
       {...props}
     />
   );

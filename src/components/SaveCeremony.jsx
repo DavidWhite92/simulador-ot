@@ -56,8 +56,14 @@ export default function SaveCeremony({ ceremony, contestants, winnerId, onNext, 
       </div>
       <div className="flex flex-wrap justify-center gap-2">
         <Button onClick={phase === "result" ? onContinue : onNext}>{label}</Button>
-        {kind === "peers" && <Button variant="outline" onClick={onRevealAll}>Revelar todo</Button>}
+        {kind === "peers" && phase !== "result" && <Button variant="outline" onClick={onRevealAll}>Revelar todo</Button>}
       </div>
+      {kind === "peers" && phase === "result" && <details className="mt-4 rounded-xl border p-3 text-left">
+        <summary className="cursor-pointer font-medium">Ver todos los votos</summary>
+        <ul className="mt-3 space-y-2 text-sm">
+          {votes.map(vote => <li key={vote.voterId}><strong>{person(vote.voterId)?.name}</strong> salva a <strong>{person(vote.votedId)?.name}</strong>.</li>)}
+        </ul>
+      </details>}
     </section>
   );
 }

@@ -162,17 +162,25 @@ for (const file of ['SimuladorOT.jsx', 'SimuladorOT_RTVE.jsx']) {
       assert.equal(c.gstate.peerTie.counts.c1, 1);
     }
   });
-  test(`${file}: bulk reveal keeps earlier votes and goes directly to the summary`, () => {
+  test(`${file}: bulk reveal keeps earlier votes and shows the saved contestant before closing`, () => {
     const { context: c, logs } = harness(file);
     c.gstate.nominados = ['c1', 'c2', 'c3'];
     c.gstate.salvados = new Set(['c0', 'c4']);
     c.startCeremony('peers', c.gstate.nominados, 'peers', ['c0', 'c4']);
     c.gstate.ceremony.votes = [{ voterId: 'c0', votedId: 'c2' }];
     c.revealAllPeerVotes();
-    assert.equal(c.stage, 'galaCerrada');
+    assert.equal(c.stage, 'ceremony');
+    assert.equal(c.gstate.ceremony.phase, 'result');
+    assert.equal(c.gstate.ceremony.nextStage, 'galaCerrada');
+    assert.equal(c.gstate.ceremony.votes.length, 2);
+    assert.ok(c.gstate.salvadoCompanerosId);
     assert.equal(c.gstate.votosCompaneros.length, 2);
     assert.equal(c.gstate.votosCompaneros[0].votedId, 'c2');
     assert.ok(logs.some(log => log.includes('c0 → c2')));
+    c.revealAllPeerVotes();
+    assert.equal(c.stage, 'ceremony');
+    c.continueCeremony();
+    assert.equal(c.stage, 'galaCerrada');
   });
 }
 
