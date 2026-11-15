@@ -1,0 +1,4 @@
+Generated with the built-in image_gen tool.
+Asset: public/ot_photos/academia-aula.png
+
+Create a photorealistic architectural interior image, landscape 16:9, for an Operación Triunfo simulator website background. Empty space: absolutely no people, human figures or faces in photos/screens, no watermark, no UI. Realistic Spanish television music academy interior, inviting, recognizable practical furnishings, subtle violet/cyan accents matching #7138ff and #33d9ff but mostly natural colors. Wide angle eye-level camera, polished professional interior photography. Will sit beneath a pale lavender translucent website overlay. The typical OT Academia teaching and vocal rehearsal classroom: upright or grand piano with empty piano bench, keyboard, music stands with scores, wall mirror, acoustic wall panels, wooden floor, a few empty chairs, daylight through tall windows. Functional airy music teaching room, no stage and no audience. Piano and rehearsal area centered.

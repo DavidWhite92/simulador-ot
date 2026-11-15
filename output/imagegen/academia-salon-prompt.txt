@@ -1,0 +1,4 @@
+Generated with the built-in image_gen tool.
+Asset: public/ot_photos/academia-salon.png
+
+Create a photorealistic architectural interior image, landscape 16:9, for an Operación Triunfo simulator website background. Empty space: absolutely no people, human figures or faces in photos/screens, no watermark, no UI. Realistic Spanish television music academy interior, inviting, recognizable practical furnishings, subtle violet/cyan accents matching #7138ff and #33d9ff but mostly natural colors. Wide angle eye-level camera, polished professional interior photography. Will sit beneath a pale lavender translucent website overlay. The classic OT Academia living room: large colorful modular sofas arranged around a generous low coffee table, cozy cushions, warm wood floors, large windows, communal living atmosphere, bookshelves, indoor plants, an OT emblem subtly integrated on a wall. Show the entire salon, not a stage, with central sofas visible in mobile center crop.

@@ -1,5 +1,6 @@
 import { updatePairs, eventRelationships, rehearsalRelationships, performanceRelationships } from './relationships.js';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { seasonBackdrop } from './seasonBackdrop.js';
 import { applyPopularity, createAcademyEvents, createPerformances, popularityOf } from './academy.js';
 import { createChatEvents } from './chatEvents.js';
 
@@ -15,6 +16,11 @@ export function useAcademySeason({ contestants, setContestants, summaries, setSu
   const chatGala = gala > 0 && gala < finalGala && stage === 'galaCerrada' && week?.done && !week.chatDone ? gala : null;
   const chat = chatGala == null ? null : academy.weeks[chatGala]?.chat || { events: [], shown: 0 };
   const blocked = contestants.length > 0 && (!week?.done || chatGala != null);
+  const backdrop = seasonBackdrop({ started: contestants.length > 0, week, chat });
+  useEffect(() => {
+    document.body.dataset.otBackdrop = backdrop;
+    return () => { delete document.body.dataset.otBackdrop; };
+  }, [backdrop]);
   function recordRelationships(relationships, target = gala) {
     setAcademy(a => ({ ...a, relationships }));
     setSummaries(s => ({ ...s, [target]: { ...s[target], relationships, pairs: academy.pairs } }));

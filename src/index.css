@@ -17,9 +17,13 @@ html, body, #root {
 }
 body {
   isolation: isolate;
-  background: radial-gradient(ellipse at 5% 0%, #7138ff17, transparent 45%),
-    radial-gradient(ellipse at 100% 25%, #33d9ff1c, transparent 42%), #f7f3ff;
+  min-height: 100%;
+  background: #f7f3ff;
+  --ot-backdrop-image: url('/ot_photos/plato-electric-show.png');
 }
+body[data-ot-backdrop='salon'] { --ot-backdrop-image: url('/ot_photos/academia-salon.png'); }
+body[data-ot-backdrop='aula'] { --ot-backdrop-image: url('/ot_photos/academia-aula.png'); }
+body[data-ot-backdrop='micros'] { --ot-backdrop-image: url('/ot_photos/academia-micros.png'); }
 /* A separate fixed layer keeps the studio subtle without fading the interface. */
 body::before {
   content: '';
@@ -27,8 +31,12 @@ body::before {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: url('/ot_photos/plato-electric-show.png') center center / cover no-repeat;
-  opacity: .20;
+  background-image: radial-gradient(ellipse at 5% 0%, #7138ff17, transparent 65%),
+    radial-gradient(ellipse at 100% 25%, #33d9ff14, transparent 65%),
+    linear-gradient(#f7f3ffcc, #f7f3ffcc), var(--ot-backdrop-image);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
 }
 .ot-shell { padding-bottom: 5rem; }
 .ot-header {
