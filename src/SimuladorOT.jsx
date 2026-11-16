@@ -1,3 +1,5 @@
+import PublicNominationReveal from "./components/PublicNominationReveal";
+import { createPublicNominationActions, publicNominationCell } from "./lib/publicNominations";
 import ClassicReveal from "./components/ClassicReveal";
 import { createClassicActions } from "./lib/classicSeason";
 import SeasonStorageControls from "./components/SeasonStorageControls";
@@ -502,7 +504,7 @@ function performanceModifier(stats, req){
       }
 
       // 3) Reglas específicas de la GALA 12
-      if (galaNum === 12) {
+      if ((galaNum === 12 && !S.publicNomination) || S.ot2003Scores) {
       const g10 = S.g10 || {};
       const top3 = new Set(g10.top3 || []);
       const cuarto = S.profesorSalvoId || g10.cuarto || null;
@@ -797,8 +799,12 @@ function runSelfTests(){
 }
 
 export default function SimuladorOT({ staff, setStaff, repechageOption, setRepechageOption, judgeNames, setJudgeNames, mode, onModeChange, roster, setRoster, manual, setManual, popularityEnabled = true, setPopularityEnabled, relationshipsEnabled = true, setRelationshipsEnabled, loadedSeason, onLoadSeason, onLoadedSeason }) {
-  const classic = mode === "tve2001";
-  const initialCount = classic ? 16 : 18;
+  const publicMode = mode === "ot2003";
+  const classic = mode === "tve2001" || publicMode;
+  const scoreGala = publicMode ? 13 : 12;
+  const sixthGala = scoreGala + 1;
+  const finalGala = classic ? scoreGala + 2 : 17;
+  const initialCount = publicMode ? 17 : classic ? 16 : 18;
   const [namesInput, setNamesInput] = useState(roster.map(p => `${p.name} - ${p.gender === "m" ? "él" : p.gender === "f" ? "ella" : "elle"}`).join("\n"));
   const [contestants, setContestants] = useState([]);
   const [gala, setGala] = useState(1);
@@ -832,7 +838,7 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
   const [showPopularity, setShowPopularity] = useState(false);
   const [showRelationships, setShowRelationships] = useState(false);
   const [showBestPerformances,setShowBestPerformances] = useState(false);
-  const seasonFinished = stage === "galaCerrada" && Boolean(classic ? summaries[14]?.classicFinal?.winner : summaries[17]?.g15?.winner || summaries[15]?.winner);
+  const seasonFinished = stage === "galaCerrada" && Boolean(classic ? summaries[finalGala]?.classicFinal?.winner : summaries[17]?.g15?.winner || summaries[15]?.winner);
 
   const [saveCode,setSaveCode]=useState(null);
   const SAVE_VERSION = 1;
@@ -1055,10 +1061,12 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
   const nameOf = (id)=> contestants.find(x=>x.id===id)?.name ?? "?";
     const classicActions = createClassicActions({gala,contestants,summaries,gstate,setGstate,setContestants,setSummaries,setStage,pushLog,manual,pickManually,nameOf,popularityEnabled});
 
+    const publicActions = createPublicNominationActions({contestants,gala,gstate,setGstate,summaries,setSummaries,setStage,pushLog,manual,pickManually,nameOf,popularityEnabled,repechageEnabled,onRepechage:ids=>repechage.start(ids)});
+
   const nextStageFor = (num) =>
-    num <= 11   ? (carryNominees.length === 2 ? "dueloPendiente" : "votoPublico")
-  : num === 12 ? (carryNominees.length === 2 ? "dueloPendiente" : "gala10_jueces")  // ✅ vuelve a permitir duelo
-  : num === 13 ? "gala11_publico"
+    num < scoreGala ? (carryNominees.length === 2 ? "dueloPendiente" : "votoPublico")
+  : num === scoreGala ? (carryNominees.length === 2 ? "dueloPendiente" : "gala10_jueces")  // ✅ vuelve a permitir duelo
+  : num === sixthGala ? "gala11_publico"
   : classic ? "classicFinalReady"
   : num <= 16 ? "g12_14_publico"
               : "g15_final";
@@ -1070,10 +1078,10 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
         const pool = (list || contestants);
         let vivos;
 
-        if (num <= 12) {
+        if (num <= scoreGala) {
           // Hasta la G12: siguen “activos” (no finalistas aún)
           vivos = pool.filter(c => c.status === "active");
-        } else if (num === 13) {
+        } else if (num === sixthGala) {
           // G13: 5 finalistas + 2 nominados arrastrados (que siguen “active”)
           vivos = pool.filter(c => c.status === "finalista" || c.status === "active");
         } else {
@@ -1089,8 +1097,8 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
         });
 
         const activosIds = [...new Set([...vivos.map(c => c.id), ...(num === 9 ? summaries[8]?.repechage?.selected || [] : [])])];
-        const nominadosDuelo = (num >= 2 && num <= (classic ? 13 : 12)) ? [...carryNominees] : [];
-        const repartoBase = classic && num >= 12 ? [...nominadosDuelo.filter(id=>activosIds.includes(id)), ...activosIds.filter(id=>!nominadosDuelo.includes(id))].map(id=>({type:"solo",members:[id],song:"",valor:""})) : buildRepartoParaGala(num, activosIds, nominadosDuelo, summaries);
+        const nominadosDuelo = (num >= 2 && num <= (classic ? sixthGala : scoreGala)) ? [...carryNominees] : [];
+        const repartoBase = classic && num >= scoreGala ? [...nominadosDuelo.filter(id=>activosIds.includes(id)), ...activosIds.filter(id=>!nominadosDuelo.includes(id))].map(id=>({type:"solo",members:[id],song:"",valor:""})) : buildRepartoParaGala(num, activosIds, nominadosDuelo, summaries);
         const { reparto, groupSong } = buildRepartoConCanciones({
             galaNum: num,
             reparto: repartoBase,
@@ -1106,6 +1114,7 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
           ...s,
           [num]: {
             ...(s[num] || { gala: num }),
+            ...(publicMode && num === scoreGala ? {ot2003Scores:true} : {}),
             duelSaved,                                // pasar a la nueva gala
 
             // aquí se guarda también el reparto (temas de la gala nueva)
@@ -1721,7 +1730,7 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
         setGstate(st => ({ ...st, ceremony: { ...c, phase: "board", votes: [...c.votes, { voterId, votedId }] } }));
         return;
       }
-      const resolve = { duel: dueloRevelar, teachers: profesoresSalvanUno, peers: companerosVotan, specialTeachers: gala10Profes, specialPeers: gala10Compas, finalDuel: g11_revelar };
+      const resolve = { duel: dueloRevelar, teachers: profesoresSalvanUno, peers: companerosVotan, specialTeachers: gala10Profes, specialPeers: gala10Compas, finalDuel: g11_revelar, publicJury: () => publicActions.saveJury() };
       resolve[c.source]?.();
     }
 
@@ -1877,9 +1886,9 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
         setCarryNominees([]);
         setGstate(st => ({ ...st, duelStep: undefined }));
 
-        if (gala === 12) {
+        if (gala === scoreGala) {
           finishCeremony("gala10_jueces");   // Telecinco G12
-        } else if (gala <= 11) {
+        } else if (gala < scoreGala) {
           finishCeremony("votoPublico");     // G1–G9
         } else {
           finishCeremony(nextStageFor(gala)); // resto igual
@@ -1961,9 +1970,9 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
       setCarryNominees([]);
       setGstate(st => ({ ...st, duelStep: undefined }));
 
-      if (gala === 12) {
+      if (gala === scoreGala) {
         finishCeremony("gala10_jueces");
-      } else if (gala <= 11) {
+      } else if (gala < scoreGala) {
         finishCeremony("votoPublico");
       } else {
         finishCeremony(nextStageFor(gala));
@@ -2632,8 +2641,8 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
       // ===== FIN MODO MANUAL =====
 
       // -------- Rama automática (tu código tal cual) --------
-      const countUntil = (gala === 12) ? 11 : gala;
-      const curList    = (gala === 12) ? undefined : cand;
+      const countUntil = (gala === 12 && !summaries[gala]?.publicNomination) ? 11 : gala;
+      const curList    = (gala === 12 && !summaries[gala]?.publicNomination) ? undefined : cand;
 
       const salvado = pickProfSave(
         cand,
@@ -2871,7 +2880,7 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
       // ---- 1) Contar nominaciones por concursante en Galas 1–9
       const countNominaciones = (id) => {
         let n = 0;
-        for (let g = 1; g <= 11; g++) {
+        for (let g = 1; g < gala; g++) {
           const s = summaries[g];
           if (!s) continue;
           if ((s.juradoNominados || []).includes(id)) n++;
@@ -3185,7 +3194,7 @@ function gala10Profes() {
 
       setSummaries(s => ({
         ...s,
-        [12]: { ...(s[12] || { gala: 12 }), salvadoCompanerosId: ganador }
+        [gala]: { ...(s[gala] || { gala }), salvadoCompanerosId: ganador }
       }));
 
       const nominadosRestantes = candidatos.filter(id => id !== ganador);
@@ -3218,7 +3227,7 @@ function gala10Profes() {
 
       pushLog(`🟥 Nominados para la próxima gala: <strong>${nameOf(nominadosRestantes[0])}</strong> vs <strong>${nameOf(nominadosRestantes[1])}</strong>.`);
       setCarryNominees(nominadosRestantes);
-      setSummaries(prev => rellenarValoracionesReparto(12, prev, contestants));
+      setSummaries(prev => rellenarValoracionesReparto(gala, prev, contestants));
       if (skipAnimation) setStage("galaCerrada");
       else finishCeremony("galaCerrada");
     }
@@ -3954,7 +3963,8 @@ function gala10Profes() {
     <div className="min-w-0 px-1 py-3 sm:p-6 max-w-7xl mx-auto space-y-4 sm:space-y-6">
       <div className="ot-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <img
-          src={classic ? "/LogoOT1_Negro.png" : "/LogoOT2005_Negro.png"}
+          src={publicMode ? "/LogoOT2003_Blanco.png" : classic ? "/LogoOT1_Negro.png" : "/LogoOT2005_Negro.png"}
+          style={publicMode ? {filter:"none"} : undefined}
           alt="Simulador Web de Operación Triunfo"
           className="ot-brand h-auto max-h-16 sm:max-h-20 md:max-h-[6.75rem] w-auto object-contain shrink-0 cursor-pointer hover:opacity-80 transition"
           onClick={reiniciar}
@@ -3971,7 +3981,7 @@ function gala10Profes() {
       </div>
 
 
-      {contestants.length === 0 && <div className="ot-intro"><span className="ot-eyebrow">TU PROPIA EDICIÓN DE OT</span><h1>Tu academia. <span>Tu historia.</span></h1><p>Elige a tus concursantes, personaliza la temporada y vive cada gala.</p><div className="ot-format"><span aria-hidden="true" />{classic ? 'TVE 2001 · Inspirado en la primera edición' : 'Telecinco · 2005–2011'}</div></div>}
+      {contestants.length === 0 && <div className="ot-intro"><span className="ot-eyebrow">TU PROPIA EDICIÓN DE OT</span><h1>Tu academia. <span>Tu historia.</span></h1><p>Elige a tus concursantes, personaliza la temporada y vive cada gala.</p><div className="ot-format"><span aria-hidden="true" />{publicMode ? 'OT2003 · El público decide' : classic ? 'TVE 2001 · Inspirado en la primera edición' : 'Telecinco · 2005–2011'}</div></div>}
 
       {contestants.length === 0 && (
         <Card>
@@ -3991,7 +4001,7 @@ function gala10Profes() {
       <center><p className="text-xs text-muted-foreground"><strong>Simulador OT (2025)</strong> - Para cualquier duda o sugerencia escríbenos a otsimulador@gmail.com</p></center>
 
       {academyBlocked && academyChat && <ChatReveal chat={academyChat} contestants={contestants} gala={shownGala(chatGala)} onNext={nextChat} onSkip={skipChat} />}
-      {academyBlocked && !academyChat && !academyWeek && academyReparto.length>0 && !summaries[gala]?.distributionReady && (manual || gala!==0) && <SongDistribution key={`distribution-${gala}`} reparto={academyReparto} groupSong={summaries[gala]?.[gala]?.groupSong} contestants={contestants} songs={songs} manual={manual} nominees={carryNominees.filter(id=>academyReparto.some(row=>row.members.includes(id)))} soloOnly={gala===0 || (classic && gala>=12)} direct={gala===0} onConfirm={(reparto,groupSong)=>setSummaries(s=>({...s,[gala]:{...s[gala],distributionReady:true,[gala]:{...s[gala]?.[gala],reparto,groupSong}}}))} />}
+      {academyBlocked && !academyChat && !academyWeek && academyReparto.length>0 && !summaries[gala]?.distributionReady && (manual || gala!==0) && <SongDistribution key={`distribution-${gala}`} reparto={academyReparto} groupSong={summaries[gala]?.[gala]?.groupSong} contestants={contestants} songs={songs} manual={manual} nominees={carryNominees.filter(id=>academyReparto.some(row=>row.members.includes(id)))} soloOnly={gala===0 || (classic && gala>=scoreGala)} direct={gala===0} onConfirm={(reparto,groupSong)=>setSummaries(s=>({...s,[gala]:{...s[gala],distributionReady:true,[gala]:{...s[gala]?.[gala],reparto,groupSong}}}))} />}
       {academyBlocked && !academyChat && (academyWeek || summaries[gala]?.distributionReady || (!manual && gala===0)) && <AcademyWeek week={academyWeek} reparto={academyReparto} groupSong={summaries[gala]?.[gala]?.groupSong}
         contestants={contestants} gala={shownGala(gala)} onNext={advanceAcademy} onSkip={skipPerformances} onSkipEvents={skipEvents} />}
       {!academyBlocked && contestants.length > 0 && <AcademySummary week={academy.weeks[viewGala]} contestants={contestants} />}
@@ -4007,9 +4017,9 @@ function gala10Profes() {
                 <Badge variant="outline">Etapa: {stage}</Badge>
               </div>
 
-              {classic && stage === "classicOpening" && <section className="space-y-3"><p>Los 16 concursantes entran en la Academia. No hay expulsiones en esta gala. Desde ahora y durante la próxima gala, el público podrá votar a su favorito.</p><Button onClick={classicActions.closeOpening}>Continuar a El Chat</Button></section>}
+              {classic && stage === "classicOpening" && <section className="space-y-3"><p>Los {initialCount} concursantes entran en la Academia. No hay expulsiones en esta gala. Desde ahora y durante la próxima gala, el público podrá votar {publicMode ? "para salvar a sus concursantes" : "a su favorito"}.</p><Button onClick={classicActions.closeOpening}>Continuar a El Chat</Button></section>}
               {classic && stage === "classicFinalReady" && <Button onClick={classicActions.startFinal}>Comenzar la final</Button>}
-              {gala <= 11 && (
+              {gala < scoreGala && (
   <>
             {/* === Controles específicos de la GALA 0 === */}
             {gala === 0 && (
@@ -4034,8 +4044,8 @@ function gala10Profes() {
             )}
 
             {stage === "votoPublico" && !gstate?.top3Shown && (
-              <Button onClick={iniciarVotoPublico} disabled={gstate?.top3Shown}>
-                🎤 Presentar favoritos
+              <Button onClick={publicMode ? publicActions.start : iniciarVotoPublico} disabled={gstate?.top3Shown}>
+                {publicMode ? "Revelar valoración y ranking del público" : "🎤 Presentar favoritos"}
               </Button>
             )}
             {gstate.top3?.length > 0 && stage === "votoPublico" && (
@@ -4052,6 +4062,7 @@ function gala10Profes() {
 
 
             {/* Y estos dos para cerrar la nominación como siempre */}
+            {stage === "publicJurySave" && <Button onClick={()=>startCeremony("jury",gstate.nominados,"publicJury")}>El jurado salva a un concursante</Button>}
             {stage === "profesSalvan" && (
               <Button onClick={() => startCeremony("teachers", gstate.nominados, "teachers")}>🎓 Profesores salvan</Button>
             )}
@@ -4068,7 +4079,7 @@ function gala10Profes() {
           </>
         )}
 
-              {gala===12 && (
+              {gala===scoreGala && (
                 <div className="flex flex-wrap gap-2">
                       {/* 👇 Nuevo flujo en 3 pasos para el duelo previo a G12 */}
                   {stage==="dueloPendiente" && (
@@ -4080,15 +4091,15 @@ function gala10Profes() {
                   {stage==="duelo_revelar" && (
                     <Button onClick={dueloRevelar}>⚔️ Revelar salvado y eliminado</Button>
                   )}
-                  {stage==="gala10_jueces" && classic && <Button onClick={classicActions.startJury}>Valorar trayectoria y elegir finalistas</Button>}
-                  {stage==="gala10_jueces" && !classic && (<><Button onClick={() => gala10PuntuarJueces(false)}>🧮 Puntuar jurado (G{shownGala(12)})</Button><Button variant="outline" onClick={() => gala10PuntuarJueces(true)}>Revelar todo</Button></>)}
+                  {stage==="gala10_jueces" && classic && !publicMode && <Button onClick={classicActions.startJury}>Valorar trayectoria y elegir finalistas</Button>}
+                  {stage==="gala10_jueces" && (!classic || publicMode) && (<><Button onClick={() => gala10PuntuarJueces(false)}>🧮 Puntuar jurado (G{shownGala(scoreGala)})</Button><Button variant="outline" onClick={() => gala10PuntuarJueces(true)}>Revelar todo</Button></>)}
                   {stage==="gala10_profes" && (<Button onClick={() => startCeremony("teachers", gstate.nominados, "specialTeachers")}>🎓 Profesores eligen 4º finalista</Button>)}
                   {stage==="gala10_compas" && (<Button onClick={() => startCeremony("peers", gstate.nominados, "specialPeers", contestants.filter(c => c.status === "finalista").map(c => c.id))}>🧑‍🤝‍🧑 Compañeros eligen 5º finalista</Button>)}
                   {stage==="galaCerrada" && (<Button onClick={goNext}>⏭️ Cerrar gala y pasar a la siguiente</Button>)}
                 </div>
               )}
 
-              {gala===13 && (
+              {gala===sixthGala && (
                 <div className="flex flex-wrap gap-2">
                   {stage==="gala11_publico" && !gstate?.g11 && (
                   <Button onClick={g11_iniciarCiegos}>Llega el momento de la verdad</Button>
@@ -4214,6 +4225,8 @@ function gala10Profes() {
                   ) : stage === "scoreReveal" && gstate.scoreReveal && viewGala === gala ? (
                     <ScoreReveal judges={academy.judges} reveal={gstate.scoreReveal} contestants={contestants}
                       onNext={advanceScoreReveal} onRevealAll={() => applyScoreResults(gstate.scoreReveal.pending)} />
+                  ) : publicMode && stage === "publicNomination" && viewGala === gala ? (
+                    <PublicNominationReveal state={gstate.publicNomination} jury={gstate} contestants={contestants} performances={summaries[gala]?.performances} manual={manual} onNext={publicActions.next} />
                   ) : classic && stage === "classicJury" && viewGala === gala ? (
                     <ClassicReveal jury={gstate.classicJury} contestants={contestants} judges={academy.judges} onNext={classicActions.nextJury} />
                   ) : classic && stage === "classicFinal" && viewGala === gala ? (
@@ -4221,7 +4234,7 @@ function gala10Profes() {
                   ) : stage === "ceremony" && gstate.ceremony && viewGala === gala ? (
                     <SaveCeremony ceremony={{ ...gstate.ceremony, tie: gstate.peerTie }} contestants={contestants}
                       winnerId={gstate.ceremony.kind === "duel" ? (gstate.ceremony.source === "finalDuel" ? summaries[gala]?.g11?.winner : summaries[gala]?.duel?.winner)
-                        : gstate.ceremony.kind === "teachers" ? (summaries[gala]?.profesorSalvoId || summaries[gala]?.g10?.cuarto) : gstate.salvadoCompanerosId}
+                        : gstate.ceremony.kind === "jury" ? summaries[gala]?.jurySavedId : gstate.ceremony.kind === "teachers" ? (summaries[gala]?.profesorSalvoId || summaries[gala]?.g10?.cuarto) : gstate.salvadoCompanerosId}
                       onNext={advanceCeremony} onContinue={continueCeremony} onRevealAll={revealAllPeerVotes} />
                   ) : stage === "votoPublico" && gstate.top3Shown && viewGala === gala ? (
                     <FavoriteReveal performances={summaries[gala]?.performances} state={gstate} contestants={contestants} onContinue={() => {setStage("juradoEvaluando");setViewGala(gala);}} />
@@ -4317,13 +4330,14 @@ function gala10Profes() {
                         const favoriteSummary = summaries[viewGala];
                         const favoritePercent = favoriteSummary?.favoritePct ?? (favoriteSummary?.top3Pct?.length ? Math.max(...favoriteSummary.top3Pct) : undefined);
                         const favoriteSuffix = contestants.find(c=>c.id===id)?.gender === 'f' ? 'a' : contestants.find(c=>c.id===id)?.gender === 'm' ? 'o' : 'e';
-                        const rawValor = favoriteSummary?.favoritoId === id
+                        const publicCell = publicMode ? publicNominationCell(contestants.find(c=>c.id===id),summaries[viewGala],viewGala) : null;
+                        const rawValor = publicCell ? publicCell.label : favoriteSummary?.favoritoId === id
                           ? `Favorit${favoriteSuffix} del Público${Number.isFinite(favoritePercent) ? ` (${favoritePercent.toFixed(2)}%)` : ''}`
                           : viewGala === 8 && summaries[8]?.falseNominees
                           ? suspendedNominationLabel(id,summaries[8],contestants,gala===8 ? gstate.publicRank : [])
                           : viewGala === 9 ? returnPerformanceLabel(id,summaries[9],contestants,valores[idx] || valores[0] || "") : valores[idx] || valores[0] || "";
                         const valor = viewGala >= 1 && viewGala <= 11 ? currentGalaLabel(rawValor,id,summaries[viewGala]) : rawValor;
-                        const { bg, fg } = valorBgColor(valor, viewGala);
+                        const { bg, fg } = publicCell ? {bg:publicCell.background,fg:publicCell.color} : valorBgColor(valor, viewGala);
 
                         // 🔵 --- Bloque del Paso A ---
                         // Normalización del texto mostrado
@@ -4333,7 +4347,7 @@ function gala10Profes() {
 
                         // (opcional, si quieres mantener la normalización de Gala 13)
                         // En G13, no normalizar si ya viene un "Salvad@ por el público (%) > Finalista"
-                        if (viewGala === 13
+                        if (viewGala === sixthGala
                             && /(finalista|favorit|nómada)/i.test(valor) 
                             && !/salvad/i.test(valor)) {
                           displayValor = "Finalista";
@@ -4399,7 +4413,7 @@ function gala10Profes() {
                 </Button>
               </div>
             </div>
-            {showBestPerformances && seasonFinished ? <BestPerformances weeks={academy.weeks} summaries={summaries} contestants={contestants} repechageEnabled={repechageEnabled} /> : showRelationships && seasonFinished ? <RelationshipsTable repechageEnabled={repechageEnabled} contestants={contestants} summaries={summaries} relations={academy.relationships} pairs={academy.pairs} /> : showPopularity && seasonFinished ? <PopularityTable repechageEnabled={repechageEnabled} contestants={contestants} summaries={summaries} /> : <RecorridoTable classic={classic} repechageEnabled={tableRepechageEnabled} contestants={contestants} summaries={summaries} />}
+            {showBestPerformances && seasonFinished ? <BestPerformances weeks={academy.weeks} summaries={summaries} contestants={contestants} repechageEnabled={repechageEnabled} /> : showRelationships && seasonFinished ? <RelationshipsTable repechageEnabled={repechageEnabled} contestants={contestants} summaries={summaries} relations={academy.relationships} pairs={academy.pairs} /> : showPopularity && seasonFinished ? <PopularityTable repechageEnabled={repechageEnabled} contestants={contestants} summaries={summaries} /> : <RecorridoTable publicMode={publicMode} classic={classic} repechageEnabled={tableRepechageEnabled} contestants={contestants} summaries={summaries} />}
           </CardContent>
         </Card>
       )}
@@ -4407,7 +4421,7 @@ function gala10Profes() {
   );
 }
 
-function RecorridoTable({ contestants, summaries, repechageEnabled=true, classic=false }){
+function RecorridoTable({ contestants, summaries, repechageEnabled=true, classic=false, publicMode=false }){
 
   // --- Helpers de género (compactos y sin repeticiones) ---
   const sufLocal = g => (g==="m"?"o":g==="f"?"a":"e");               // sufijo por género
@@ -4438,7 +4452,8 @@ function RecorridoTable({ contestants, summaries, repechageEnabled=true, classic
   // Acceso al género de un concursante por id
   const getGender = (id) => contestants.find(c => c.id === id)?.gender ?? "e";
 
-  const lastGala = classic ? 14 : 17;
+  const scoreGala = publicMode ? 13 : 12;
+  const lastGala = classic ? scoreGala+2 : 17;
   const headers=["Concursante", "Gala 0", ...visibleGalas(lastGala,repechageEnabled).slice(1).map(g=>g===lastGala?"Gala Final":`Gala ${displayGala(g,repechageEnabled)}`)];
   const cellStyle=(bg,color="#000")=>({ background:bg, color, padding:"0px 6px", border:"1px solid #ddd", fontSize:12, textAlign:"center", whiteSpace:"nowrap" });
   const g15 = summaries[17]?.g15, winnerId=g15?.winner, thirdId=g15?.third, secondId=g15 ? [...g15.tabla].sort((a,b)=>b.pct-a.pct)[1]?.id : undefined;
@@ -4468,8 +4483,8 @@ function RecorridoTable({ contestants, summaries, repechageEnabled=true, classic
       sorted=[...aliveOnly, ...eliminatedOnly];
     }
 
-  if (classic && summaries[14]?.classicFinal) {
-    const order = summaries[14].classicFinal.entries.map(row=>row.id);
+  if (classic && summaries[lastGala]?.classicFinal) {
+    const order = summaries[lastGala].classicFinal.entries.map(row=>row.id);
     sorted.sort((a,b)=>(order.includes(a.id)?order.indexOf(a.id):99)-(order.includes(b.id)?order.indexOf(b.id):99));
   }
 
@@ -4502,11 +4517,18 @@ function RecorridoTable({ contestants, summaries, repechageEnabled=true, classic
       let text="—", style=cellStyle("#eee","#555");
       const elimGala = eliminationGalas.includes(g) ? g : null;
       const special = repechageCell(c,summaries,g);
+      if (publicMode && special) {
+        const ranked=publicNominationCell(c,summaries[g],g);
+        if(ranked && summaries[g]?.falseNominees?.includes(c.id)) Object.assign(special,{text:ranked.text,background:ranked.background,color:ranked.color});
+        if(ranked && g===9 && summaries[9]?.repechage?.winner===c.id) {
+          special.split=true; special.parts=[{text:'Rep.',background:'#d879d8'},{text:ranked.text,background:ranked.background,color:ranked.color}];
+        }
+      }
       if (special) { cells.push({text:special.split ? <SplitJourneyCell parts={special.parts} /> : special.text,style:{...cellStyle(special.background,special.color || '#111'),...(special.split?{padding:0}:{})}}); continue; }
       if (absentAfterElimination(c,summaries,g)) { cells.push({ text: "—", style: cellStyle("#ccc", "#666") }); continue; }
       if (elimGala !== null && g === elimGala) {
         const gnd = getGender(c.id);
-        if (g >= 14 && g <= 16) {
+        if (!classic && g >= 14 && g <= 16) {
           // 6º (G14) · 5º (G15) · 4º (G16) — “º” si es él, “ª” si es ella o elle
           const n   = g === 14 ? "6" : g === 15 ? "5" : "4";
           const suf = gnd === "m" ? "º" : "ª";
@@ -4519,7 +4541,10 @@ function RecorridoTable({ contestants, summaries, repechageEnabled=true, classic
 
       const s=summaries[g]; if(!s){ cells.push({text,style}); continue; }
 
-      if (g <= 11) {
+      const publicCell=publicMode ? publicNominationCell(c,s,g) : null;
+      if (publicCell) {cells.push({text:publicCell.text,style:cellStyle(publicCell.background,publicCell.color)});continue;}
+
+      if (g < scoreGala) {
         // ✅ Lee Top-3 desde summaries
         const top3Ids  = s.top3Ids || [];
         const inTop3   = top3Ids.includes(c.id);
@@ -4580,7 +4605,7 @@ function RecorridoTable({ contestants, summaries, repechageEnabled=true, classic
         }
       }
 
-      else if (classic && g === 12) {
+      else if (classic && !publicMode && g === scoreGala) {
         const info=s.g10;
         if (info) {
           const jurySaved=info.top3?.includes(c.id);
@@ -4589,14 +4614,14 @@ function RecorridoTable({ contestants, summaries, repechageEnabled=true, classic
           style=cellStyle(firstFinalist?"DodgerBlue":info.cuarto===c.id?"yellowgreen":info.quinto===c.id?"khaki":jurySaved?"#fff":"orange",firstFinalist?"#fff":"#111");
         }
       }
-      else if (classic && g === 14) {
+      else if (classic && g === lastGala) {
         const rank=s.classicFinal?.entries.findIndex(row=>row.id===c.id);
         if (rank>=0) {
           text=rank===0?lbl.ganador(getGender(c.id)):`${rank+1}${getGender(c.id)==="f"?"ª":"º"} Finalista`;
           style=cellStyle(["gold","silver","#cd7f32","sienna","sienna","sienna"][rank],rank<2?"#111":"#fff");
         }
       }
-      else if (g === 12) {
+      else if (g === scoreGala) {
         const g10 = s.g10;
         if (g10?.sumas) {
           const sum = g10.sumas[c.id];
@@ -4617,7 +4642,7 @@ function RecorridoTable({ contestants, summaries, repechageEnabled=true, classic
         }
       }
 
-      else if (g === 13) {
+      else if (g === scoreGala+1) {
         const g11 = s.g11;
         if (g11) {
           const gnd = getGender(c.id);
@@ -4636,7 +4661,7 @@ function RecorridoTable({ contestants, summaries, repechageEnabled=true, classic
         }
       }
 
-      else if (g >= 14 && g <= 16) {
+      else if (!classic && g >= 14 && g <= 16) {
         const gX = s.g12_14;
         if (gX) {
           const d   = gX.duel;                         // { low, high, pctWin, pctLose, winner }

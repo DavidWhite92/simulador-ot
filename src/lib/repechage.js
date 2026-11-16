@@ -12,11 +12,12 @@ export function useRepechage({gala,gstate,setGstate,contestants,setContestants,s
   const state=gstate.repechage;
   const save = r => setGstate(s=>({...s,repechage:r}));
   const log = text => pushLog(String(text).replace(/[&<>]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[ch])));
-  function start() {
+  function start(publicDanger) {
     if(gala!==8) return;
     const eligible=contestants.filter(c=>c.status==='active' && c.id!==gstate.favoritoId).map(c=>c.id);
     let falseNominees=selectPerformanceNominees(eligible,summaries[8]?.performances || {},contestants,4);
-    if(manual) {
+    if(Array.isArray(publicDanger)) falseNominees=[...publicDanger];
+    else if(manual) {
       falseNominees=[];
       for(let i=0;i<4;i++) {
         const id=pickManually(eligible.filter(id=>!falseNominees.includes(id)),false,nameOf,`Elige al falso nominado ${i+1} (todos se salvarán)`);
@@ -30,7 +31,7 @@ export function useRepechage({gala,gstate,setGstate,contestants,setContestants,s
     const pool=songs.filter(song=>!used.has(song));
     const available=[...(pool.length>=candidates.length ? pool : songs)];
     const reparto=candidates.map(id=>({members:[id],song:available.splice(Math.floor(Math.random()*available.length),1)[0],type:'solo'}));
-    save({phase:'crossing',crossingStep:'present',feedback:summaries[8]?.performances || {},saved,falseNominees,candidates,reparto,shown:0,performances:createPerformances(contestants,reparto,songsMeta,academy.judges),performed:0,ranking:[],revealed:0,judge:academy.judges[Math.floor(Math.random()*4)]});
+    save({phase:Array.isArray(publicDanger)?'surprise':'crossing',crossingStep:'present',feedback:summaries[8]?.performances || {},saved,falseNominees,candidates,reparto,shown:0,performances:createPerformances(contestants,reparto,songsMeta,academy.judges),performed:0,ranking:[],revealed:0,judge:academy.judges[Math.floor(Math.random()*4)]});
     setStage('repechage');
   }
   function startReturn() {
@@ -57,7 +58,7 @@ export function useRepechage({gala,gstate,setGstate,contestants,setContestants,s
     } else if(state.phase==='surprise') {
       log(`🎄 ${state.judge}: Como es Navidad, no queremos amargaros el dulce. ¡Todos os salváis!`);
       setSummaries(s=>{
-        const summary={...s[8],repechageAnnounced:true,falseNominees:state.falseNominees,juradoNominados:[],finalNominees:[],
+        const summary={...s[8],...(s[8]?.publicNomination ? {publicNomination:{...s[8].publicNomination,revealed:s[8].publicNomination.entries.map(row=>row.id)}} : {}),repechageAnnounced:true,falseNominees:state.falseNominees,juradoNominados:[],finalNominees:[],
           favoritoId:gstate.favoritoId, favoritePct:gstate.publicRank?.find(r=>r.id===gstate.favoritoId)?.pct ?? s[8]?.favoritePct ?? s[8]?.top3Pct?.[0]};
         return {...s,8:{...summary,8:{...summary[8],reparto:(summary[8]?.reparto || []).map(row=>({...row,
           valor:row.members.map(id=>suspendedNominationLabel(id,summary,contestants)).join(' | ')}))}}};

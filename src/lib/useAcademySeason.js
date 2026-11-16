@@ -12,8 +12,8 @@ export function useAcademySeason({ contestants, setContestants, summaries, setSu
   const groupSong=summaries[gala]?.[gala]?.groupSong;
   const groupMembers=[...new Set(reparto.flatMap(row=>row.members))];
   const galaReparto=groupSong ? [{type:'group',song:groupSong,members:groupMembers},...reparto] : reparto;
-  const finalGala = mode === 'tve2001' ? 14 : mode === 'rtve' ? 15 : 17;
-  const chatGala = (gala > 0 || mode === 'tve2001') && gala < finalGala && stage === 'galaCerrada' && week?.done && !week.chatDone ? gala : null;
+  const finalGala = mode === 'ot2003' ? 15 : mode === 'tve2001' ? 14 : mode === 'rtve' ? 15 : 17;
+  const chatGala = (gala > 0 || mode === 'tve2001' || mode === 'ot2003') && gala < finalGala && stage === 'galaCerrada' && week?.done && !week.chatDone ? gala : null;
   const chat = chatGala == null ? null : academy.weeks[chatGala]?.chat || { events: [], shown: 0 };
   const blocked = contestants.length > 0 && (!week?.done || chatGala != null);
   const backdrop = seasonBackdrop({ started: contestants.length > 0, week, chat });
@@ -97,7 +97,7 @@ export function useAcademySeason({ contestants, setContestants, summaries, setSu
   function nextChat() {
     if (chatGala == null) return;
     const stored = academy.weeks[chatGala];
-    const current = stored.chat ? stored : { ...stored, chat: { events: createChatEvents(contestants, summaries[chatGala], undefined, chatGala < (mode === 'rtve' ? 13 : 12), chatGala), shown: 0 } };
+    const current = stored.chat ? stored : { ...stored, chat: { events: createChatEvents(contestants, summaries[chatGala], undefined, chatGala < (mode === 'rtve' || mode === 'ot2003' ? 13 : 12), chatGala), shown: 0 } };
     if (current.chat.shown < current.chat.events.length) {
       const event = current.chat.events[current.chat.shown];
       recordRelationships(eventRelationships(academy.relationships, event, contestants, true), chatGala);
@@ -129,7 +129,7 @@ export function useAcademySeason({ contestants, setContestants, summaries, setSu
   function skipChat() {
     if (chatGala == null) return;
     const current = academy.weeks[chatGala];
-    const pendingChat = current.chat || { events: createChatEvents(contestants, summaries[chatGala], undefined, chatGala < (mode === 'rtve' ? 13 : 12), chatGala), shown: 0 };
+    const pendingChat = current.chat || { events: createChatEvents(contestants, summaries[chatGala], undefined, chatGala < (mode === 'rtve' || mode === 'ot2003' ? 13 : 12), chatGala), shown: 0 };
     let updated = contestants;
     let relationships = academy.relationships || {};
     for (const event of pendingChat.events.slice(pendingChat.shown)) {

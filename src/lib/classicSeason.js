@@ -35,7 +35,7 @@ export function createClassicActions({gala, contestants, summaries, gstate, setG
   function closeOpening() {
     const ids=contestants.map(c=>c.id);
     setSummaries(s=>({...s,0:{...s[0],gala0:{entraJurado:ids,eliminados:[]},0:{...s[0]?.[0],reparto:(s[0]?.[0]?.reparto || []).map(row=>({...row,valor:'Entra en la Academia'}))}}}));
-    log('Los 16 concursantes entran en la Academia. Desde este momento y durante la próxima gala, el público podrá votar a su favorito. ¡Nos vemos en El Chat!');
+    log(`${contestants.length===17 ? "Los 17 concursantes entran en la Academia. Desde ahora el público votará para salvar." : "Los 16 concursantes entran en la Academia. Desde este momento y durante la próxima gala, el público podrá votar a su favorito."} ¡Nos vemos en El Chat!`);
     setStage('galaCerrada');
   }
   function startJury() {

@@ -6,6 +6,7 @@ export function popularityCellStyle(c, s, gala) {
   if (c.history?.some(h => h.gala === gala && /eliminad|expulsad/i.test(h.evento))) return { background: 'red', color: 'white' };
   if (s?.gala0?.eliminados?.includes(c.id)) return { background: 'red', color: 'white' };
   if (s?.favoritoId === c.id) return { background: 'DodgerBlue', color: 'white' };
+  if (s?.jurySavedId === c.id) return { background: '#65a1a5', color: '#111' };
   if (s?.finalNominees?.includes(c.id)) return { background: 'orange', color: '#111' };
   if (s?.profesorSalvoId === c.id || s?.gala0?.salvoProfes === c.id || s?.g10?.cuarto === c.id) return { background: 'yellowgreen', color: '#111' };
   if (s?.salvadoCompanerosId === c.id || s?.g10?.quinto === c.id) return { background: 'khaki', color: '#111' };

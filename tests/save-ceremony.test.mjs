@@ -17,7 +17,7 @@ function harness(file, manual = false) {
   const logs = [];
   const people = Array.from({ length: 8 }, (_, i) => ({ id: `c${i}`, name: `Name ${i}`, status: 'active', gender: 'm', history: [] }));
   const context = vm.createContext({ choosePeerSave, relationshipsEnabled: false, academy: {relationships:{},pairs:[]}, popularityEnabled: true,
-    Set, manual, gala: 2, stage: 'profesSalvan', contestants: people, carryNominees: ['c6', 'c7'],
+    scoreGala:12, sixthGala:13, Set, manual, gala: 2, stage: 'profesSalvan', contestants: people, carryNominees: ['c6', 'c7'],
     gstate: { nominados: ['c1', 'c2', 'c3', 'c4'], salvados: new Set(['c0', 'c5', 'c6']), favoritoId: 'c0' },
     summaries: { 2: { juradoNominados: ['c1', 'c2', 'c3', 'c4'] } },
     nameOf: id => id, fmtPct: p => `${p.toFixed(2)}%`, pushLog: html => logs.push(html),

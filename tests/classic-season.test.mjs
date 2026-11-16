@@ -112,7 +112,7 @@ test('actual TVE 2001 routing stops favourites after Gala 9 or 11 and goes direc
   const source=readFileSync(new URL('../src/SimuladorOT.jsx',import.meta.url),'utf8');
   const start=source.indexOf('  const nextStageFor =');
   const end=source.indexOf('    const repechage =',start);
-  const c=vm.createContext({carryNominees:[],classic:true});
+  const c=vm.createContext({carryNominees:[],classic:true,scoreGala:12,sixthGala:13});
   vm.runInContext(source.slice(start,end)+'\nglobalThis.next=nextStageFor;',c);
   for(const enabled of [false,true]) {
     const galas=visibleGalas(14,enabled);
@@ -152,7 +152,7 @@ test('last qualifying gala puts the two nominees first and the classic final con
   const start=source.indexOf('      function prepararNuevaGala(');
   const end=source.indexOf('  function iniciar()',start);
   const finalists=Array.from({length:6},(_,i)=>({id:`c${i}`,status:'finalista'}));
-  const c=vm.createContext({classic:true,contestants:finalists,carryNominees:[],summaries:{},songs:['Tema'],shuffle:ids=>ids,
+  const c=vm.createContext({classic:true,publicMode:false,scoreGala:12,sixthGala:13,contestants:finalists,carryNominees:[],summaries:{},songs:['Tema'],shuffle:ids=>ids,
     buildRepartoConCanciones:({reparto})=>({reparto,groupSong:'Grupal'}),nextStageFor:()=>'',
     setGstate(){},setViewGala(){},setGalaLogs(){},setStage(){},setSummaries:update=>{c.summaries=update(c.summaries);}});
   vm.runInContext(source.slice(start,end),c);

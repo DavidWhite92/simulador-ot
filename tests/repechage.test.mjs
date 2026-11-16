@@ -83,7 +83,7 @@ for(const [file,scoreGala,finalGala] of [['SimuladorOT.jsx',12,17],['SimuladorOT
     const source=readFileSync(new URL(`../src/${file}`,import.meta.url),'utf8');
     const start=source.indexOf('  const nextStageFor =');
     const end=source.indexOf('    const repechage =',start);
-    const c=vm.createContext({carryNominees:[],classic:false});
+    const c=vm.createContext({carryNominees:[],classic:false,scoreGala:12,sixthGala:13});
     vm.runInContext(source.slice(start,end)+'\nglobalThis.next=nextStageFor;',c);
     assert.equal(c.next(10),'votoPublico'); assert.equal(c.next(11),'votoPublico');
     assert.equal(c.next(scoreGala),file==='SimuladorOT.jsx'?'gala10_jueces':'gala11_publico');

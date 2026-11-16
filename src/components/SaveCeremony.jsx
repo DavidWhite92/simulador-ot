@@ -12,7 +12,7 @@ export default function SaveCeremony({ ceremony, contestants, winnerId, onNext, 
   const boardVisible = phase === "board";
   const voterId = boardVisible ? last?.voterId : voters[votes.length];
   const winner = person(winnerId);
-  const title = kind === "duel" ? "Llega el momento de la verdad" : kind === "teachers" ? "Los profesores han tomado una decisión…" : "Votación de los compañeros";
+  const title = kind === "duel" ? "Llega el momento de la verdad" : kind === "jury" ? "El jurado salva de la Zona de Peligro…" : kind === "teachers" ? "Los profesores han tomado una decisión…" : "Votación de los compañeros";
   const votesDone = votes.length === voters.length;
   const counts = Object.fromEntries(ids.map(id => [id, votes.filter(v => v.votedId === id).length]));
   const maxVotes = Math.max(...Object.values(counts));
@@ -20,7 +20,7 @@ export default function SaveCeremony({ ceremony, contestants, winnerId, onNext, 
   const displayedCounts = phase === "result" && ceremony.tie?.counts ? ceremony.tie.counts : counts;
   const label = phase === "result" ? "Continuar" : kind === "duel"
     ? phase === "intro" ? "Escuchar al presentador" : phase === "phrase" ? "Revelar porcentaje" : "Revelar salvado"
-    : kind === "teachers" ? "Revelar salvado por los profesores" : votesDone ? "Revelar salvado por los compañeros" : boardVisible ? "Revelar siguiente voto" : "Revelar pizarra";
+    : kind === "jury" ? "Revelar salvado por el jurado" : kind === "teachers" ? "Revelar salvado por los profesores" : votesDone ? "Revelar salvado por los compañeros" : boardVisible ? "Revelar siguiente voto" : "Revelar pizarra";
   return (
     <section aria-live="polite" aria-label={title} className="overflow-hidden rounded-xl border bg-white p-2 sm:p-5 text-center">
       <h3 className="mb-5 text-lg font-semibold">{title}</h3>

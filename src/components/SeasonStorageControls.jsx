@@ -36,7 +36,7 @@ export default function SeasonStorageControls({started,buildPayload,pack,unpack,
   }
   async function load(packed,localCode=null) {
     const payload=unpack(packed);
-    if(payload?.v!==1 || !['tve2001','telecinco','rtve'].includes(payload.mode) || !Array.isArray(payload.contestants)) throw new Error('El archivo no contiene una temporada compatible.');
+    if(payload?.v!==1 || !['tve2001','ot2003','telecinco','rtve'].includes(payload.mode) || !Array.isArray(payload.contestants)) throw new Error('El archivo no contiene una temporada compatible.');
     await restoreCustomLibrary(payload.customContestants || []);
     onLoad({...payload,saveCode:localCode});setLoading(false);
     setMessage('Temporada cargada. Los concursantes custom existentes se han conservado.');

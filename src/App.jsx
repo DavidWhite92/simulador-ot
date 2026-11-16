@@ -20,7 +20,7 @@ export default function App() {
   const [loadedSeason, setLoadedSeason] = useState(null);
   const onLoadSeason = (payload) => {
     if (!payload || payload.v !== 1) throw new Error("Versión de guardado incompatible");
-    if (payload.mode && !["tve2001", "telecinco", "rtve"].includes(payload.mode)) throw new Error("Formato de temporada desconocido");
+    if (payload.mode && !["tve2001", "ot2003", "telecinco", "rtve"].includes(payload.mode)) throw new Error("Formato de temporada desconocido");
     setLoadedSeason(payload);
     setStaff(payload.academy?.staff || defaultStaff);
     if(payload.academy?.judges) setJudgeNames(payload.academy.judges);

@@ -36,6 +36,7 @@ export default function SeasonSettings({ repechageOption, setRepechageOption, ma
             Formato de la temporada
             <select value={mode} disabled={started} onChange={e => onModeChange(e.target.value)} className="mt-2 w-full rounded-lg border bg-white p-2 disabled:bg-gray-100 disabled:text-gray-500">
               <option value="tve2001">TVE 2001 - Primera edición</option>
+              <option value="ot2003">OT2003</option>
               <option value="telecinco">Telecinco (2005–2011)</option>
               <option value="rtve">TVE (2017–2020)</option>
             </select>
