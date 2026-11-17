@@ -106,11 +106,11 @@ body::before {
 .ot-music { color: #512b91; border-color: #e4d9f4; box-shadow: 0 4px 18px #15112813; }
 .ot-music > button { min-width: 36px; min-height: 36px; }
 @media (max-width: 639px) {
-  .ot-header { padding: 1.1rem; padding-top: 1.4rem; border-radius: 1.15rem; }
-  .ot-brand { align-self: flex-start; max-width: 55%; max-height: 64px; }
+  .ot-header { flex-direction: row; align-items: center; justify-content: space-between; gap: .5rem; padding: 1.1rem; padding-top: 1.4rem; border-radius: 1.15rem; }
+  .ot-brand { align-self: center; max-width: 55%; max-height: 64px; }
   .ot-intro { padding: .3rem .35rem; }
-  .ot-header > div { flex-wrap: wrap; }
-  .ot-header .ot-button { flex: 1 1 120px; font-size: .8rem; }
+  .ot-header > div { width: auto; flex: 0 0 auto; }
+  .ot-header .ot-button { flex: none; width: auto; padding: .4rem .6rem; font-size: .75rem; white-space: nowrap; }
   .ot-music { right: .7rem; top: .8rem; }
 }
 @media (prefers-reduced-motion: reduce) {
