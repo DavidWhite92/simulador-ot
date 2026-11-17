@@ -10,6 +10,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { transformSync } from 'esbuild';
 import { repechageCell, absentAfterElimination } from '../src/lib/repechage.js';
 import { lastElimination } from '../src/lib/seasonSchedule.js';
+import { publicNominationCell } from '../src/lib/publicNominations.js';
 
 function harness(count=7) {
   const state={gala:12,contestants:Array.from({length:count},(_,i)=>({id:`c${i}`,name:`Persona ${i}`,gender:'f',status:'active',popularity:50,history:[]})),summaries:{},gstate:{},stage:'gala10_jueces',manual:false,popularityEnabled:true};
@@ -122,6 +123,40 @@ test('actual TVE 2001 routing stops favourites after Gala 9 or 11 and goes direc
     assert.equal(c.next(13),'gala11_publico');
     assert.equal(c.next(14),'classicFinalReady');
   }
+});
+
+test('OT2003 routes ranking, numerical scores, sixth finalist and direct final in both calendars',()=>{
+  const source=readFileSync(new URL('../src/SimuladorOT.jsx',import.meta.url),'utf8');
+  const start=source.indexOf('  const nextStageFor =');
+  const end=source.indexOf('    const repechage =',start);
+  const c=vm.createContext({carryNominees:[],classic:true,scoreGala:13,sixthGala:14});
+  vm.runInContext(source.slice(start,end)+'\nglobalThis.next=nextStageFor;',c);
+  for(const enabled of [false,true]) {
+    assert.equal(c.next(12),'votoPublico');
+    assert.equal(c.next(13),'gala10_jueces');
+    assert.equal(c.next(14),'gala11_publico');
+    assert.equal(c.next(15),'classicFinalReady');
+    assert.equal(displayGala(15,enabled),enabled?15:13);
+  }
+  c.carryNominees=['a','b'];
+  assert.equal(c.next(12),'dueloPendiente');
+  assert.equal(c.next(13),'dueloPendiente');
+});
+
+test('OT2003 journey renders public ranks and rescue colours',()=>{
+  const source=readFileSync(new URL('../src/SimuladorOT.jsx',import.meta.url),'utf8');
+  const code=transformSync(source.slice(source.indexOf('function RecorridoTable('))+'\nglobalThis.Table=RecorridoTable;', {loader:'jsx',jsxFactory:'React.createElement'}).code;
+  const c=vm.createContext({React,visibleGalas,displayGala,lastElimination,repechageCell,absentAfterElimination,publicNominationCell,normName:s=>s,
+    TablePerson:({person})=>React.createElement('td',null,person.name),SplitJourneyCell:()=>null});
+  vm.runInContext(code,c);
+  const {state:s}=harness(8);
+  const entries=s.contestants.map(person=>({id:person.id}));
+  const summaries={1:{publicNomination:{entries,revealed:entries.map(r=>r.id),dangerCount:5},jurySavedId:'c3'}};
+  const html=renderToStaticMarkup(React.createElement(c.Table,{contestants:s.contestants,summaries,classic:true,publicMode:true,repechageEnabled:false}));
+  assert.ok(html.includes('Favorita (1ª)'));
+  assert.ok(html.includes('Nominada (4ª)'));
+  assert.ok(html.includes('#65a1a5'));
+  assert.ok(html.includes('Gala Final'));
 });
 
 test('classic journey table has six ranked finalists, no numeric jury scores and the correct final column',()=>{

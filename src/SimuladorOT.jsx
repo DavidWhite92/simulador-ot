@@ -423,6 +423,10 @@ function performanceModifier(stats, req){
 
       // —— Etiquetador por concursante
       const valueOf = (id) => {
+        if (S.publicNomination) {
+          const publicCell = publicNominationCell({id, gender:getG(id)}, S, galaNum);
+          if (publicCell) return publicCell.label;
+        }
         const g    = getG(id);
         const sufG = suf(g);
         const parts = [];
@@ -2909,7 +2913,7 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
         const elegidos = pickManually(idsVivos, true, nameOf, "Elige el Top 3 del jurado")?.slice(0,3);
         if (!elegidos || elegidos.length !== 3) { alert("Debes elegir 3 concursantes para el Top-3 del jurado."); return; }
         chosenTop3 = elegidos.map(String);
-        pushLog(`👑 Finalistas por jurado (G12, manual): <strong>${chosenTop3.map(id=>nameOf(id)).join(", ")}</strong>.`);
+        pushLog(`👑 Finalistas por jurado (manual): <strong>${chosenTop3.map(id=>nameOf(id)).join(", ")}</strong>.`);
       }
       // ======= FIN MODO MANUAL =======
 
@@ -2970,21 +2974,21 @@ export default function SimuladorOT({ staff, setStaff, repechageOption, setRepec
         const n = scores[c.id];
         return `<tr><td>${c.name}</td><td>${n[0].toFixed(1)}</td><td>${n[1].toFixed(1)}</td><td>${n[2].toFixed(1)}</td><td>${n[3].toFixed(1)}</td><td><strong>${sumas[c.id].toFixed(2)}</strong></td></tr>`;
       }).join("");
-      pushLog(`📋 Desglose jurado (G12):<div style="overflow:auto;"><table style="border-collapse:collapse;"><thead>${th}</thead><tbody>${rows}</tbody></table></div>`);
+      pushLog(`📋 Desglose jurado:<div style="overflow:auto;"><table style="border-collapse:collapse;"><thead>${th}</thead><tbody>${rows}</tbody></table></div>`);
 
       // Marca finalistas Top-3
       setContestants(prev => prev.map(c => 
         top3.some(t=>t.id===c.id)
-          ? { ...c, status:"finalista", history:[...c.history,{gala,evento:"Finalista por jurado (G12)"}] }
+          ? { ...c, status:"finalista", history:[...c.history,{gala,evento:"Finalista por jurado"}] }
           : c
       ));
 
       if (SHOW_G10_SUMMARY) {
-        pushLog(`📊 <strong>Gala 12</strong> – Sumas del jurado: ${orden.map((x,i)=>`${i+1}. ${x.name} (${sumas[x.id].toFixed(2)})`).join(" · ")}.`);
+        pushLog(`📊 <strong>Gala ${gala}</strong> – Sumas del jurado: ${orden.map((x,i)=>`${i+1}. ${x.name} (${sumas[x.id].toFixed(2)})`).join(" · ")}.`);
       }
 
       if (!chosenTop3) {
-        pushLog(`👑 Finalistas por jurado (G12): <strong>${top3.map(t=>t.name).join(", ")}</strong>. Nominados (4): ${bottom4.map(t=>t.name).join(", ")}.`);
+        pushLog(`👑 Finalistas por jurado: <strong>${top3.map(t=>t.name).join(", ")}</strong>. Nominados (4): ${bottom4.map(t=>t.name).join(", ")}.`);
       } else {
         pushLog(`Nominados (4): ${bottom4.map(t=>t.name).join(", ")}.`);
       }
@@ -3054,7 +3058,7 @@ function gala10Profes() {
     setContestants(prev =>
       prev.map(c =>
         c.id === salvado
-          ? { ...c, status: "finalista", history: [...c.history, { gala, evento: "4º finalista (profes, G12)" }] }
+          ? { ...c, status: "finalista", history: [...c.history, { gala, evento: "4º finalista (profes)" }] }
           : c
       )
     );
@@ -3102,12 +3106,12 @@ function gala10Profes() {
   setContestants(prev =>
     prev.map(c =>
       c.id === salvado
-        ? { ...c, status: "finalista", history: [...c.history, { gala, evento: "4º finalista (profes, G12)" }] }
+        ? { ...c, status: "finalista", history: [...c.history, { gala, evento: "4º finalista (profes)" }] }
         : c
     )
   );
 
-  pushLog(`🎓 Profesores eligen 4º finalista (G12): <strong>${nameOf(salvado)}</strong>.`);
+  pushLog(`🎓 Profesores eligen 4º finalista: <strong>${nameOf(salvado)}</strong>.`);
 
   const restantes = cand.filter(id => id !== salvado);
   setGstate({ ...gstate, nominados: restantes, profesorSalvoId: salvado });
@@ -3130,7 +3134,7 @@ function gala10Profes() {
       const electores = contestants.filter(c => c.status === "finalista").map(c => c.id);
       const candidatos = votingState.nominados;
       if (!Array.isArray(candidatos) || candidatos.length !== 3) {
-        pushLog("⚠️ No hay 3 nominados para la votación de compañeros (G12).");
+        pushLog("⚠️ No hay 3 nominados para la votación de compañeros.");
         return;
       }
 
@@ -3143,11 +3147,11 @@ function gala10Profes() {
       if (votos.length !== electores.length) return;
 
       const votosList = votos.map(v => `<li>${nameOf(v.voterId)} → ${nameOf(v.votedId)}</li>`).join("");
-      pushLog(`🧑‍🤝‍🧑 Votación de compañeros (G12):<ul style="margin:4px 0 0 16px;">${votosList}</ul>`);
+      pushLog(`🧑‍🤝‍🧑 Votación de compañeros:<ul style="margin:4px 0 0 16px;">${votosList}</ul>`);
 
       const recuento = { [candidatos[0]]:0, [candidatos[1]]:0, [candidatos[2]]:0 };
       votos.forEach(v => recuento[v.votedId]++);
-      pushLog(`📊 Recuento de votos (compañeros, G12): ${
+      pushLog(`📊 Recuento de votos (compañeros): ${
         candidatos.map(id => `<strong>${nameOf(id)}</strong> ${recuento[id]}`).join(" · ")
       }`);
 
@@ -3187,7 +3191,7 @@ function gala10Profes() {
       setContestants(prev => prev.map(c => c.id === ganador ? {
         ...c,
         status: "finalista",
-        history: [...(c.history || []), { gala, evento: "5º finalista (compañeros, G12)" }]
+        history: [...(c.history || []), { gala, evento: "5º finalista (compañeros)" }]
       } : c));
 
       pushLog(`✅ Más votado por compañeros: <strong>${nameOf(ganador)}</strong> (5º finalista).`);
@@ -3280,10 +3284,10 @@ function gala10Profes() {
         // Actualiza estados usando eq(...)
         setContestants(prev => prev.map(c => {
           if (eq(c.id, manualWinner)) {
-            return { ...c, status: "finalista", history: [...(c.history||[]), { gala, evento: "6º finalista (público, G13, manual)" }] };
+            return { ...c, status: "finalista", history: [...(c.history||[]), { gala, evento: "6º finalista (público, manual)" }] };
           }
           if (eq(c.id, manualLoser)) {
-            return { ...c, status: "eliminado", history: [...(c.history||[]), { gala, evento: "Eliminado (G13, manual)" }] };
+            return { ...c, status: "eliminado", history: [...(c.history||[]), { gala, evento: "Eliminado (manual)" }] };
           }
           return c;
         }));
@@ -3328,8 +3332,8 @@ function gala10Profes() {
 
       // === Automático (igual que tenías) ===
       setContestants(prev=>prev.map(c=>
-        eq(c.id, winner) ? { ...c, status:"finalista", history:[...c.history,{gala,evento:"6º finalista (público, G13)"}] } :
-        eq(c.id, loser)  ? { ...c, status:"eliminado", history:[...c.history,{gala,evento:"Eliminado (G13)"}] } : c
+        eq(c.id, winner) ? { ...c, status:"finalista", history:[...c.history,{gala,evento:"6º finalista (público)"}] } :
+        eq(c.id, loser)  ? { ...c, status:"eliminado", history:[...c.history,{gala,evento:"Eliminado"}] } : c
       ));
 
       pushLog(`🗳️ <strong>${nameOfSafe(winner)}</strong>. ${nameOfSafe(loser)} es eliminado/a.`);
@@ -3372,10 +3376,10 @@ function gala10Profes() {
     const winner = pctA>pctB ? a : b;
     const loser  = winner===a ? b : a;
     setContestants(prev=>prev.map(c=>
-      c.id===winner ? { ...c, status:"finalista", history:[...c.history,{gala,evento:"6º finalista (público, G13)"}] } :
-      c.id===loser  ? { ...c, status:"eliminado", history:[...c.history,{gala,evento:"Eliminado (G13)"}] } : c
+      c.id===winner ? { ...c, status:"finalista", history:[...c.history,{gala,evento:"6º finalista (público)"}] } :
+      c.id===loser  ? { ...c, status:"eliminado", history:[...c.history,{gala,evento:"Eliminado"}] } : c
     ));
-    pushLog(`🏆 Resultado público (G13): ${nameOf(a)} ${fmtPct(pctA)} · ${nameOf(b)} ${fmtPct(pctB)} → Se salva <strong>${nameOf(winner)}</strong>.`);
+    pushLog(`🏆 Resultado público: ${nameOf(a)} ${fmtPct(pctA)} · ${nameOf(b)} ${fmtPct(pctB)} → Se salva <strong>${nameOf(winner)}</strong>.`);
     const seis = contestants.filter(c=> (c.id===winner?true:c.status==="finalista")).map(c=>c.name);
     pushLog(`✅ Finalistas anunciados: ${seis.join(", ")}.`);
     setSummaries(s=>({...s,[gala]:{ ...(s[gala]||{gala}), g11:{ a,b,pctA,pctB,winner } }}));

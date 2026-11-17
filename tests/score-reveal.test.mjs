@@ -5,13 +5,13 @@ import vm from 'node:vm';
 import { performanceNominationModifier } from '../src/lib/academy.js';
 import { captureScoreResult, alignFinalistScores, scoreEvents, liveScoreRanking } from '../src/lib/scoreReveal.js';
 
-function setup(file, manual) {
+function setup(file, manual, galaOverride) {
   const tc = file === 'SimuladorOT.jsx';
   const source = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
   const start = source.indexOf('    function applyScoreResults(');
   const end = source.indexOf(tc ? 'function gala10Profes(' : '    function g11_profesoresSalvan(', start);
   const contestants = Array.from({ length: tc ? 7 : 6 }, (_, i) => ({ id: `c${i}`, name: `Name ${i}`, status: 'active', history: [] }));
-  const gala = tc ? 12 : 13;
+  const gala = galaOverride ?? (tc ? 12 : 13);
   const stage = tc ? 'gala10_jueces' : 'g11_jurado';
   const context = vm.createContext({ performanceNominationModifier,
     contestants, manual, gala, stage, gstate: {}, galaLogs: {},
@@ -28,6 +28,16 @@ function setup(file, manual) {
   context.start = tc ? context.gala10PuntuarJueces : context.g11_puntuarJurado;
   return context;
 }
+
+test('OT2003 scores at seven contestants use the current gala and choose three finalists', () => {
+  const c = setup('SimuladorOT.jsx', false, 13);
+  c.start(true);
+  assert.equal(c.contestants.filter(p => p.status === 'finalista').length, 3);
+  assert.equal(c.gstate.nominados.length, 4);
+  assert.equal(c.stage, 'gala10_profes');
+  assert.equal(c.summaries[13].g10.top3.length, 3);
+  assert.equal(c.summaries[12], undefined);
+});
 
 for (const file of ['SimuladorOT.jsx', 'SimuladorOT_RTVE.jsx']) {
   for (const manual of [false, true]) {

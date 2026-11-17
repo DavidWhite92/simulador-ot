@@ -30,7 +30,7 @@ export default function PublicNominationReveal({state,jury,contestants,performan
         <strong>{person?.name}, ponte en pie.</strong>
         {state.screen!=='call' && <p>{feedback?.critique || 'Hemos valorado tu actuación de esta noche.'}</p>}
         {['placement','result'].includes(state.screen) && <p>Pero bueno, veamos dónde te ha colocado el público esta semana…</p>}
-        {result && <p className={`text-lg font-bold ${index>=boundary?'text-red-700':'text-emerald-700'}`}>Puesto {index+1}. {index>=boundary?'Estás en la Zona de Peligro.':index===0?'¡Favorito del público! Cruza la pasarela.':'¡Cruza la pasarela!'}</p>}
+        {result && <p className={`text-lg font-bold ${index>=boundary?'text-red-700':'text-emerald-700'}`}>Puesto {index+1}. {index>=boundary?'Estás en la Zona de Peligro.':index===0?`¡Favorit${person?.gender==='f'?'a':person?.gender==='m'?'o':'e'} del público! Cruza la pasarela.`:'¡Cruza la pasarela!'}</p>}
         {manual && state.screen==='placement' && <label>Puesto del público<select className="mt-2 block w-full border p-2" value={slot} onChange={e=>setSlot(e.target.value)}><option value="">Elige un puesto</option>{slots.map(i=><option key={i} value={i}>{i+1}{i>=boundary?' · Zona de Peligro':''}</option>)}</select></label>}
       </Motion.div>
     </div>
