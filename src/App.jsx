@@ -40,6 +40,10 @@ export default function App() {
         )}
       </div>
       </StaffContext.Provider>
+      <footer className="max-w-7xl mx-auto px-4 py-4 sm:px-6 text-xs text-muted-foreground text-center space-y-2">
+        <p>© 2026 Simulador OT — Proyecto fan no oficial, gratuito y sin ánimo de lucro. No afiliado ni respaldado por Operación Triunfo ni por sus titulares de derechos. Todas las marcas, imágenes, logotipos y músicas de terceros pertenecen a sus respectivos titulares de derechos.</p>
+        <p>Contacto y sugerencias: <a className="underline" href="mailto:otsimulador@gmail.com">otsimulador@gmail.com</a></p>
+      </footer>
     </div>
   );
 }

@@ -3827,7 +3827,6 @@ export default function SimuladorOT_RTVE({ staff, setStaff, repechageOption, set
 
       <SeasonStorageControls started={contestants.length>0} buildPayload={buildSavePayload} pack={packState} unpack={unpackState} saveCode={saveCode} setSaveCode={setSaveCode} onLoad={onLoadSeason} />
 
-      <p className="text-xs text-muted-foreground text-center">© 2026 Simulador OT — Proyecto fan no oficial, gratuito y sin ánimo de lucro. No afiliado ni respaldado por Operación Triunfo ni por sus titulares de derechos. Todas las marcas, imágenes, logotipos y músicas de terceros pertenecen a sus respectivos titulares de derechos.</p>
 
 
 

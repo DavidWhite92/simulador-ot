@@ -4002,7 +4002,6 @@ function gala10Profes() {
 
       <SeasonStorageControls started={contestants.length>0} buildPayload={buildSavePayload} pack={packState} unpack={unpackState} saveCode={saveCode} setSaveCode={setSaveCode} onLoad={onLoadSeason} />
 
-      <p className="text-xs text-muted-foreground text-center">© 2026 Simulador OT — Proyecto fan no oficial, gratuito y sin ánimo de lucro. No afiliado ni respaldado por Operación Triunfo ni por sus titulares de derechos. Todas las marcas, imágenes, logotipos y músicas de terceros pertenecen a sus respectivos titulares de derechos.</p>
 
       {academyBlocked && academyChat && <ChatReveal chat={academyChat} contestants={contestants} gala={shownGala(chatGala)} onNext={nextChat} onSkip={skipChat} />}
       {academyBlocked && !academyChat && !academyWeek && academyReparto.length>0 && !summaries[gala]?.distributionReady && (manual || gala!==0) && <SongDistribution key={`distribution-${gala}`} reparto={academyReparto} groupSong={summaries[gala]?.[gala]?.groupSong} contestants={contestants} songs={songs} manual={manual} nominees={carryNominees.filter(id=>academyReparto.some(row=>row.members.includes(id)))} soloOnly={gala===0 || (classic && gala>=scoreGala)} direct={gala===0} onConfirm={(reparto,groupSong)=>setSummaries(s=>({...s,[gala]:{...s[gala],distributionReady:true,[gala]:{...s[gala]?.[gala],reparto,groupSong}}}))} />}
