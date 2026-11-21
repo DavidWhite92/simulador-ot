@@ -4522,7 +4522,7 @@ function RecorridoTable({ contestants, summaries, repechageEnabled=true, classic
       const special = repechageCell(c,summaries,g);
       if (publicMode && special) {
         const ranked=publicNominationCell(c,summaries[g],g);
-        if(ranked && summaries[g]?.falseNominees?.includes(c.id)) Object.assign(special,{text:ranked.text,background:ranked.background,color:ranked.color});
+        if(ranked && g===8 && (summaries[g]?.falseNominees?.includes(c.id) || summaries[g]?.top3Ids?.includes(c.id))) Object.assign(special,{text:ranked.text,background:ranked.background,color:ranked.color});
         if(ranked && g===9 && summaries[9]?.repechage?.winner===c.id) {
           special.split=true; special.parts=[{text:'Rep.',background:'#d879d8'},{text:ranked.text,background:ranked.background,color:ranked.color}];
         }

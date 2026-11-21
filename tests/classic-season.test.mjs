@@ -157,6 +157,14 @@ test('OT2003 journey renders public ranks and rescue colours',()=>{
   assert.ok(html.includes('Nominada (4ª)'));
   assert.ok(html.includes('#65a1a5'));
   assert.ok(html.includes('Gala Final'));
+  const christmas={8:{publicNomination:{entries,revealed:entries.map(r=>r.id),dangerCount:5},favoritoId:'c0',top3Ids:['c0','c1','c2'],falseNominees:entries.slice(-5).map(r=>r.id)}};
+  const christmasHtml=renderToStaticMarkup(React.createElement(c.Table,{contestants:s.contestants,summaries:christmas,classic:true,publicMode:true,repechageEnabled:true}));
+  assert.ok(christmasHtml.includes('Favorita (1ª)'));
+  assert.ok(christmasHtml.includes('Salvada (2ª)'));
+  assert.ok(christmasHtml.includes('Salvada (3ª)'));
+  assert.ok(christmasHtml.includes('Salvada (4ª)'));
+  assert.ok(christmasHtml.includes('#AFEEEE'));
+  assert.ok(christmasHtml.includes('#65a1a5'));
 });
 
 test('classic journey table has six ranked finalists, no numeric jury scores and the correct final column',()=>{

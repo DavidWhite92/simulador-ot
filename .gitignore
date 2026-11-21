@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Pruebas y exportaciones ajenas al simulador; conservar sus recursos de imagen.
+/output/*
+!/output/imagegen/
